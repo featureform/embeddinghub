@@ -1,9 +1,15 @@
+import logging
+import os
+
 from behave import *
 
 
 @given("Featureform is installed")
 def step_impl(context):
     import featureform
+
+    av = os.getenv("FF_GET_EQUIVALENT_VARIANTS")
+    logging.info(f"Using autovariants: {av}")
 
 
 @when('I create a "{mode}" "{secure}" client for "{host}"')

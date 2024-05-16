@@ -4787,7 +4787,9 @@ class ResourceClient:
         return get_training_set_variant_info(self._stub, name, variant)
 
     def get_source(self, name, variant):
-        name_variant = metadata_pb2.NameVariant(name=name, variant=variant)
+        name_variant = metadata_pb2.NameVariantRequest(
+            name_variant=metadata_pb2.NameVariant(name=name, variant=variant)
+        )
         source = None
         for x in self._stub.GetSourceVariants(iter([name_variant])):
             source = x

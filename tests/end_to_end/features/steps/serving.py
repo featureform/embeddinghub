@@ -164,9 +164,9 @@ def step_impl(context):
     ]
     context.iter = context.client.batch_features(
         [
-            ("boolean_feature", ff.get_run()),
-            ("numerical_feature", ff.get_run()),
-            ("string_feature", ff.get_run()),
+            ("boolean_feature", context.variant),
+            ("numerical_feature", context.variant),
+            ("string_feature", context.variant),
         ]
     )
 
@@ -187,9 +187,9 @@ def step_impl(context):
     }
     context.iter = context.client.batch_features(
         [
-            ("transaction_feature", ff.get_run()),
-            ("balance_feature", ff.get_run()),
-            ("perc_feature", ff.get_run()),
+            ("transaction_feature", context.variant),
+            ("balance_feature", context.variant),
+            ("perc_feature", context.variant),
         ]
     )
 

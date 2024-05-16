@@ -3,7 +3,7 @@ azure-core
 azure-identity
 azure-storage-blob
 behave==1.2.6
-behavex==3.0.0
+behavex==3.2.0
 boto3==1.28.55
 build==0.10.0
 click==8.1.7

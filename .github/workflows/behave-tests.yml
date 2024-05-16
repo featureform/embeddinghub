@@ -81,7 +81,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Container
-        run: docker run -d -p 7878:7878 -p 80:80 featureform
+        run: docker run -d --name featureform -p 7878:7878 -p 80:80 featureform
 
       - name: Setup Proto
         run: ./gen_grpc.sh
@@ -109,3 +109,14 @@ jobs:
         with:
           name: behave-reports
           path: ./tests/end_to_end/output/
+      
+      - name: Save Docker logs for featureform container to artifact
+        if: always()
+        run: docker logs featureform 2> featureform.log
+        
+      - name: Upload featureform logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: featureform-logs
+          path: ./featureform.log

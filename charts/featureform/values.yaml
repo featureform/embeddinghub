@@ -66,6 +66,16 @@ dashboardUrl: ""
 # If true, restarts pods on update even if no changes have been made
 restartOnUpdate: false
 
+argo:
+  # Enables path forwarding of /argocd/ to the Argo web server. Note this still requires installation of Argo,
+  # done outside of this chart itself as it is a global service across the cluster.
+  enabled: false
+
+  rollouts:
+    # Enables the creation of Rollout objects for all of the different deployments, to be used as part
+    # of Argo Rollouts CD. Must have Argo Rollouts installed on the cluster.
+    enabled: false
+
 logging:
   # When enabled, will use the loki stack for logging
   enabled: true

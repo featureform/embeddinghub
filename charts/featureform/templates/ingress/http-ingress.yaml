@@ -62,6 +62,15 @@ spec:
                 name: featureform-api-server
                 port:
                   number: 8443
+          {{- if .Values.argo.enabled }}
+          - path: /argocd/
+            pathType: Prefix
+            backend:
+              service:
+                name: argo-svc-bridge
+                port:
+                  number: 80
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:

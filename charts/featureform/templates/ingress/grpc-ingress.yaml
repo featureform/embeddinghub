@@ -43,11 +43,16 @@ spec:
                 name: featureform-api-server
                 port:
                   number: {{ .Values.grpcIngressPort }}
-
-
-
+          {{- if .Values.argo.enabled }}
+          - path: /argocd/
+            pathType: Prefix
+            backend:
+              service:
+                name: argo-svc-bridge
+                port:
+                  name: https
+          {{- end }}
   tls:
     - hosts:
         -  {{ .Values.hostname }}
       secretName: {{ .Values.tlsSecretName }}
-

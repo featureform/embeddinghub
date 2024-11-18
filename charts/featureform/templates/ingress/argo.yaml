@@ -1,0 +1,13 @@
+# This is necessary because ingress doesn't work across namespaces boundaries,
+# so we need a bridge from the application to the argo namespace.
+{{ if .Values.argo.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-svc-bridge
+spec:
+  type: ExternalName
+  externalName: argo-argocd-server.argo
+  ports:
+    - port: 80
+{{ end }}

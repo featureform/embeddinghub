@@ -260,6 +260,10 @@ func (store *sqlOfflineStore) CheckHealth() (bool, error) {
 	return true, nil
 }
 
+func (store sqlOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
+
 func (store *sqlOfflineStore) RegisterResourceFromSourceTable(id ResourceID, schema ResourceSchema, opts ...ResourceOption) (OfflineTable, error) {
 	logger := logging.NewLogger("sql").WithProvider(store.Type().String(), "SQL")
 	logger.Debugw("Registering resource from source table", "id", id, "schema", schema, "options", opts)

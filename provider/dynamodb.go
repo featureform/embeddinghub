@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 	"math"
 	"reflect"
 	"strconv"
@@ -362,6 +363,10 @@ func (store *dynamodbOnlineStore) CheckHealth() (bool, error) {
 		return false, fferr.NewExecutionError(pt.DynamoDBOnline.String(), err)
 	}
 	return true, nil
+}
+
+func (store dynamodbOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 // TODO(simba) Make this work with Serialize V1

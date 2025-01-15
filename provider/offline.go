@@ -1253,6 +1253,10 @@ func (store *memoryOfflineStore) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("provider health check not implemented"))
 }
 
+func (store *memoryOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
+
 type trainingRows []trainingRow
 
 func (rows trainingRows) Iterator() TrainingSetIterator {

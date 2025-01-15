@@ -9,6 +9,7 @@ package provider
 
 import (
 	"fmt"
+	"github.com/featureform/fferr"
 
 	"github.com/featureform/filestore"
 	"github.com/featureform/metadata"
@@ -41,6 +42,10 @@ func (u UnitTestProvider) Config() pc.SerializedConfig {
 
 func (u UnitTestProvider) CheckHealth() (bool, error) {
 	return false, fmt.Errorf("provider health check not implemented")
+}
+
+func (u UnitTestProvider) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 type UnitTestStore interface {

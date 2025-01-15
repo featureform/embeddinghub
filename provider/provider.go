@@ -13,6 +13,7 @@ package provider
 
 import (
 	"fmt"
+	pl "github.com/featureform/provider/location"
 
 	"github.com/featureform/fferr"
 	pc "github.com/featureform/provider/provider_config"
@@ -36,7 +37,6 @@ func init() {
 		pt.BigQueryOffline:   bigQueryOfflineStoreFactory,
 		pt.SparkOffline:      sparkOfflineStoreFactory,
 		pt.K8sOffline:        k8sOfflineStoreFactory,
-		pt.BlobOnline:        blobOnlineStoreFactory,
 		pt.MongoDBOnline:     mongoOnlineStoreFactory,
 		pt.UNIT_TEST:         unitTestStoreFactory,
 	}
@@ -55,6 +55,7 @@ type Provider interface {
 	Type() pt.Type
 	Config() pc.SerializedConfig
 	CheckHealth() (bool, error)
+	Delete(location pl.Location) error
 }
 
 type BaseProvider struct {
@@ -80,6 +81,10 @@ func (provider BaseProvider) Config() pc.SerializedConfig {
 
 func (provider BaseProvider) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("provider health check not implemented"))
+}
+
+func (provider BaseProvider) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 type Factory func(pc.SerializedConfig) (Provider, error)

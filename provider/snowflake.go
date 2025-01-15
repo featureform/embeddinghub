@@ -346,6 +346,28 @@ func (sf *snowflakeOfflineStore) AsOfflineStore() (OfflineStore, error) {
 	return sf, nil
 }
 
+func (sf snowflakeOfflineStore) Delete(location pl.Location) error {
+	if exists, err := sf.sqlOfflineStore.tableExists(location); err != nil {
+		return err
+	} else if !exists {
+		return fferr.NewDatasetLocationNotFoundError(location.Location(), nil)
+	}
+
+	sqlLoc, isSqlLoc := location.(*pl.SQLLocation)
+	if !isSqlLoc {
+		return fferr.NewInternalErrorf("location is not an SQL location")
+	}
+
+	query := sf.sfQueries.dropTableQuery(*sqlLoc)
+	sf.logger.Debugw("Deleting table", "query", query)
+
+	if _, err := sf.db.Exec(query); err != nil {
+		return sf.handleErr(fferr.NewExecutionError(pt.SnowflakeOffline.String(), err), err)
+	}
+
+	return nil
+}
+
 // handleErr attempts to add the Snowflake query and session IDs to a wrapped error to aid
 // in further debugging in the Snowflake UI; note that handleErr will not fail even if the
 // returned error isn't an instance of gosnowflake.SnowflakeError or if the query to get

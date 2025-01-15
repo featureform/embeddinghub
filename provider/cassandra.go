@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 
 	"github.com/featureform/fferr"
 	pc "github.com/featureform/provider/provider_config"
@@ -202,6 +203,10 @@ func (store *cassandraOnlineStore) DeleteTable(feature, variant string) error {
 
 func (store *cassandraOnlineStore) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("not implemented"))
+}
+
+func (store cassandraOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 func (table cassandraOnlineTable) Set(entity string, value interface{}) error {

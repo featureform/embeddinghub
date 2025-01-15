@@ -1423,6 +1423,10 @@ func (k8s *K8sOfflineStore) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("provider health check not implemented"))
 }
 
+func (k8s K8sOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
+
 func fileStoreGetTrainingSet(id ResourceID, store FileStore, logger *zap.SugaredLogger) (TrainingSetIterator, error) {
 	if err := id.check(TrainingSet); err != nil {
 		logger.Errorw("Resource is not of type training set", "error", err)

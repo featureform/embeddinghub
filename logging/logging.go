@@ -10,6 +10,7 @@ package logging
 import (
 	"context"
 	"encoding/json"
+	"github.com/featureform/metadata/proto"
 	"io"
 	"sync"
 	"testing"
@@ -55,6 +56,37 @@ const (
 	Label              ResourceType = "label"
 	LabelVariant       ResourceType = "label-variant"
 )
+
+func ResourceTypeFromProto(resourceType proto.ResourceType) ResourceType {
+	switch resourceType {
+	case proto.ResourceType_PROVIDER:
+		return Provider
+	case proto.ResourceType_USER:
+		return User
+	case proto.ResourceType_FEATURE:
+		return Feature
+	case proto.ResourceType_FEATURE_VARIANT:
+		return FeatureVariant
+	case proto.ResourceType_SOURCE:
+		return Source
+	case proto.ResourceType_SOURCE_VARIANT:
+		return SourceVariant
+	case proto.ResourceType_TRAINING_SET:
+		return TrainingSet
+	case proto.ResourceType_TRAINING_SET_VARIANT:
+		return TrainingSetVariant
+	case proto.ResourceType_ENTITY:
+		return Entity
+	case proto.ResourceType_MODEL:
+		return Model
+	case proto.ResourceType_LABEL:
+		return Label
+	case proto.ResourceType_LABEL_VARIANT:
+		return LabelVariant
+	default:
+		return ""
+	}
+}
 
 const (
 	DebugLevel = "debug"

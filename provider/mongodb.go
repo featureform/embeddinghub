@@ -10,6 +10,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 
 	"github.com/featureform/fferr"
 	pc "github.com/featureform/provider/provider_config"
@@ -204,6 +205,9 @@ func (store *mongoDBOnlineStore) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("not implemented"))
 }
 
+func (store mongoDBOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
 func (table mongoDBOnlineTable) Set(entity string, value interface{}) error {
 	upsert := true
 	_, err := table.client.Database(table.database).

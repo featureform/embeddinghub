@@ -154,7 +154,7 @@ func (s *MetadataStorage) Count(prefix string, opts ...query.Query) (int, error)
 	return s.Storage.Count(prefix, opts...)
 }
 
-func (s *MetadataStorage) Get(key string) (string, error) {
+func (s *MetadataStorage) Get(key string, opts ...query.Query) (string, error) {
 	ctx := context.Background()
 	reqID := uuid.NewString()
 	ctx = context.WithValue(ctx, "request_id", reqID)
@@ -167,7 +167,7 @@ func (s *MetadataStorage) Get(key string) (string, error) {
 	}
 	defer s.unlockWithLogger(ctx, s.Locker, lock, logger)
 
-	val, err := s.Storage.Get(key)
+	val, err := s.Storage.Get(key, opts...)
 	if err != nil {
 		return "", err
 	}
@@ -200,11 +200,19 @@ func (s *MetadataStorage) Close() {
 	s.Storage.Close()
 }
 
+type MetadataStorageType string
+
+const (
+	MemoryMetadataStorage MetadataStorageType = "memory"
+	ETCDMetadataStorage   MetadataStorageType = "etcd"
+	PSQLMetadataStorage   MetadataStorageType = "psql"
+)
+
 type metadataStorageImplementation interface {
 	// Set stores the value for the key and updates it if it already exists
 	Set(key string, value string) error
 	// Get returns the value for the key
-	Get(key string) (string, error)
+	Get(key string, opts ...query.Query) (string, error)
 	// List returns all the keys and values that match the query
 	List(prefix string, opts ...query.Query) (map[string]string, error)
 	// List Computed Columns
@@ -215,4 +223,6 @@ type metadataStorageImplementation interface {
 	Count(prefix string, opts ...query.Query) (int, error)
 	// Close closes the storage
 	Close()
+	// Type returns the type of the storage
+	Type() MetadataStorageType
 }

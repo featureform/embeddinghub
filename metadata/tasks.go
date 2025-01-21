@@ -122,7 +122,7 @@ func (t *Tasks) genericParseRuns(client runStream) (s.TaskRunList, error) {
 			return nil, err
 		}
 
-		wrappedRun, err := s.WrapProtoTaskRunMetadata(&msg)
+		wrappedRun, err := s.TaskRunMetadataFromProto(&msg)
 		if err != nil {
 			return s.TaskRunList{}, err
 		}
@@ -182,7 +182,7 @@ func (t *Tasks) GetRun(tid s.TaskID, rid s.TaskRunID) (s.TaskRunMetadata, error)
 	if err != nil {
 		return s.TaskRunMetadata{}, err
 	}
-	parsed, err := s.WrapProtoTaskRunMetadata(meta)
+	parsed, err := s.TaskRunMetadataFromProto(meta)
 	if err != nil {
 		return s.TaskRunMetadata{}, err
 	}
@@ -196,7 +196,7 @@ func (t *Tasks) GetLatestRun(id s.TaskID) (s.TaskRunMetadata, error) {
 		return s.TaskRunMetadata{}, err
 	}
 	t.logger.Debugw("Converting proto to TaskRunMetadata", "task_id", id.String())
-	wrappedRun, err := s.WrapProtoTaskRunMetadata(run)
+	wrappedRun, err := s.TaskRunMetadataFromProto(run)
 	if err != nil {
 		return s.TaskRunMetadata{}, err
 	}

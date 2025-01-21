@@ -9,6 +9,7 @@ package scheduling
 
 import (
 	"fmt"
+	"github.com/featureform/logging"
 	"sort"
 	"time"
 
@@ -26,6 +27,8 @@ import (
 const (
 	EmptyList int = iota
 )
+
+var logger = logging.NewLogger("taskmetadata")
 
 type TaskMetadataList []TaskMetadata
 
@@ -215,6 +218,10 @@ func (m *TaskMetadataManager) CreateTaskRun(name string, taskID TaskID, trigger 
 
 	startTime := time.Now().UTC()
 
+	logger.Debugw("this is the parent task", "parentTask", parentTask)
+	isDelete := parentTask.TaskType == ResourceDeletion
+	logger.Debugw("is delete", "isDelete", isDelete)
+
 	metadata := TaskRunMetadata{
 		ID:             TaskRunID(uintID),
 		TaskId:         taskID,
@@ -226,6 +233,7 @@ func (m *TaskMetadataManager) CreateTaskRun(name string, taskID TaskID, trigger 
 		Status:         PENDING,
 		StartTime:      startTime,
 		LastSuccessful: lastSuccess,
+		IsDelete:       isDelete,
 	}
 
 	runs.Runs = append(runs.Runs, TaskRunSimple{RunID: metadata.ID, DateCreated: startTime})

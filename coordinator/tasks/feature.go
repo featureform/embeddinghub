@@ -9,7 +9,10 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/featureform/logging"
+	"github.com/featureform/provider/provider_schema"
 	"time"
 
 	"github.com/featureform/fferr"
@@ -35,8 +38,13 @@ func (t *FeatureTask) Run() error {
 		return fferr.NewInternalErrorf("cannot create a feature from target type: %s", t.taskDef.TargetType)
 	}
 
-	t.logger.Info("Running feature materialization job on resource: ", nv)
+	logger := t.logger.WithResource(logging.FeatureVariant, nv.Name, nv.Variant)
+	resID := metadata.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: metadata.FEATURE_VARIANT}
+	if t.isDelete {
+		return t.handleDeletion(resID, logger)
+	}
 
+	logger.Info("Running feature materialization job on resource: ", nv)
 	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Fetching Feature details..."); err != nil {
 		return err
 	}
@@ -45,8 +53,7 @@ func (t *FeatureTask) Run() error {
 	if err != nil {
 		return err
 	}
-	t.logger.Infow("feature variant", "name", feature.Name(), "source", feature.Source(), "location", feature.Location(), "location_col", feature.LocationColumns())
-
+	logger.Infow("Running task", "source", feature.Source(), "location", feature.Location(), "location_col", feature.LocationColumns())
 	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Waiting for dependencies to complete..."); err != nil {
 		return err
 	}
@@ -73,12 +80,6 @@ func (t *FeatureTask) Run() error {
 	if err != nil {
 		return err
 	}
-	defer func(sourceStore provider.OfflineStore) {
-		err := sourceStore.Close()
-		if err != nil {
-			t.logger.Errorf("could not close offline store: %v", err)
-		}
-	}(sourceStore)
 
 	var featureProvider *metadata.Provider // this is the inference store
 	if feature.Provider() != "" {
@@ -93,7 +94,7 @@ func (t *FeatureTask) Run() error {
 		return typeErr
 	}
 
-	t.logger.Debugw("Getting feature's source location", "name", source.Name(), "variant", source.Variant())
+	logger.Debugw("Getting feature's source location", "name", source.Name(), "variant", source.Variant())
 	var sourceLocation pl.Location
 	var sourceLocationErr error
 	if source.IsSQLTransformation() || source.IsDFTransformation() {
@@ -105,12 +106,13 @@ func (t *FeatureTask) Run() error {
 	if sourceLocationErr != nil {
 		return sourceLocationErr
 	}
-	t.logger.Debugw("Feature's source location", "location", sourceLocation, "location_type", sourceLocation.Type())
+	logger.Debugw("Feature's source location", "location", sourceLocation, "location_type", sourceLocation.Type())
 	featID := provider.ResourceID{
 		Name:    nv.Name,
 		Variant: nv.Variant,
 		Type:    provider.Feature,
 	}
+
 	tmpSchema := feature.LocationColumns().(metadata.ResourceVariantColumns)
 	schema := provider.ResourceSchema{
 		Entity:      tmpSchema.Entity,
@@ -118,8 +120,7 @@ func (t *FeatureTask) Run() error {
 		TS:          tmpSchema.TS,
 		SourceTable: sourceLocation,
 	}
-	t.logger.Debugw("Creating Resource Table", "id", featID, "schema", schema)
-
+	logger.Debugw("Creating Resource Table", "id", featID, "schema", schema)
 	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Registering Feature from dataset..."); err != nil {
 		return err
 	}
@@ -127,7 +128,7 @@ func (t *FeatureTask) Run() error {
 	if _, err := sourceStore.RegisterResourceFromSourceTable(featID, schema); err != nil {
 		return err
 	}
-	t.logger.Debugw("Resource Table Created", "id", featID, "schema", schema)
+	logger.Debugw("Resource Table Created", "id", featID, "schema", schema)
 
 	maxJobDurationEnv := helpers.GetEnv("MAX_JOB_DURATION", "48h")
 	maxJobDuration, err := time.ParseDuration(maxJobDurationEnv)
@@ -201,7 +202,6 @@ func (t *FeatureTask) Run() error {
 	}
 
 	var materializationErr error
-	resID := metadata.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: metadata.FEATURE_VARIANT}
 	if supportsDirectCopy {
 		if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Materializing via direct copy..."); err != nil {
 			return err
@@ -227,10 +227,93 @@ func (t *FeatureTask) Run() error {
 		return materializationErr
 	}
 
-	t.logger.Debugw("Setting status to ready", "id", featID)
+	logger.Debugw("Setting status to ready")
 	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Materialization Complete..."); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (t *FeatureTask) handleDeletion(resID metadata.ResourceID, logger logging.Logger) error {
+	logger.Infow("Deleting feature")
+	featureTableName, tableNameErr := provider_schema.ResourceToTableName(provider_schema.Materialization, resID.Name, resID.Variant)
+	if tableNameErr != nil {
+		logger.Errorw("Failed to get table name for feature", "error", tableNameErr)
+		return tableNameErr
+	}
+	featureLocation := pl.NewSQLLocation(featureTableName)
+	logger.Debugw("Deleting feature at location", "location", featureLocation)
+
+	nv := metadata.NameVariant{
+		Name:    resID.Name,
+		Variant: resID.Variant,
+	}
+
+	logger.Debugw("Fetching feature that's staged for deletion")
+	featureToDelete, err := t.metadata.GetStagedForDeletionFeatureVariant(context.Background(), nv)
+	if err != nil {
+		return err
+	}
+
+	sourceStore, err := getStore(t.BaseTask, t.metadata, featureToDelete)
+	if err != nil {
+		logger.Errorw("Failed to get store", "error", err)
+		return err
+	}
+
+	logger.Debugw("Deleting feature from offline store")
+	if deleteErr := sourceStore.Delete(featureLocation); deleteErr != nil {
+		var notFoundErr *fferr.DatasetNotFoundError
+		if errors.As(deleteErr, &notFoundErr) {
+			logger.Infow("Table doesn't exist at location, continuing...", "location", featureLocation)
+		} else {
+			logger.Errorw("Failed to delete feature from offline store", "error", deleteErr)
+			return deleteErr
+		}
+	}
+
+	logger.Infow("Successfully deleted feature at location", "location", featureLocation)
+
+	var featureProvider *metadata.Provider // this is the inference store
+	if featureToDelete.Provider() != "" {
+		featureProvider, err = featureToDelete.FetchProvider(t.metadata, context.Background())
+		if err != nil {
+			logger.Errorw("Failed to fetch inference store", "error", err)
+			return err
+		}
+	}
+
+	logger.Debugw("Attempting to delete feature from online store", "name", nv.Name, "variant", nv.Variant)
+	if featureProvider != nil {
+		logger.Debugw("Deleting feature from online store")
+		onlineProvider, err := provider.Get(pt.Type(featureProvider.Type()), featureProvider.SerializedConfig())
+		if err != nil {
+			logger.Errorw("Failed to get online provider", "error", err)
+			return err
+		}
+		casted, err := onlineProvider.AsOnlineStore()
+		if err != nil {
+			return err
+		}
+
+		onlineDeleteErr := casted.DeleteTable(nv.Name, nv.Variant)
+		if onlineDeleteErr != nil {
+			var notFoundErr *fferr.DatasetNotFoundError
+			if errors.As(onlineDeleteErr, &notFoundErr) {
+				logger.Infow("Table not found in online store, continuing...")
+				// continuing
+			} else {
+				logger.Errorw("Failed to delete feature from online store", "error", onlineDeleteErr)
+				return onlineDeleteErr
+			}
+		}
+		logger.Debugw("Deleted feature from online store", "name", nv.Name, "variant", nv.Variant)
+	}
+
+	if err := t.metadata.FinalizeDelete(context.Background(), resID); err != nil {
+		return err
+	}
+
 	return nil
 }
 

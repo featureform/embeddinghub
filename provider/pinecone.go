@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 	"io"
 	"net/http"
 	"net/url"
@@ -96,6 +97,10 @@ func (store *pineconeOnlineStore) DeleteTable(feature, variant string) error {
 
 func (store *pineconeOnlineStore) CheckHealth() (bool, error) {
 	return false, fferr.NewInternalError(fmt.Errorf("not implemented"))
+}
+
+func (store *pineconeOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 func (store *pineconeOnlineStore) CreateIndex(feature, variant string, vectorType types.VectorType) (VectorStoreTable, error) {

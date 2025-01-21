@@ -1,4 +1,4 @@
-/* 
+/*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -17,655 +17,690 @@ option go_package = "github.com/featureform/metadata/proto";
 package featureform.serving.metadata.proto;
 
 service Metadata {
-    rpc CreateUser(UserRequest) returns (Empty);
-    rpc CreateProvider(ProviderRequest) returns (Empty);
-    rpc CreateSourceVariant(SourceVariantRequest) returns (Empty);
-    rpc CreateEntity(EntityRequest) returns (Empty);
-    rpc CreateFeatureVariant(FeatureVariantRequest) returns (Empty);
-    rpc CreateLabelVariant(LabelVariantRequest) returns (Empty);
-    rpc CreateTrainingSetVariant(TrainingSetVariantRequest) returns (Empty);
-    rpc CreateModel(ModelRequest) returns (Empty);
-    rpc RequestScheduleChange(ScheduleChangeRequest) returns (Empty);
+  rpc CreateUser(UserRequest) returns (Empty);
+  rpc CreateProvider(ProviderRequest) returns (Empty);
+  rpc CreateSourceVariant(SourceVariantRequest) returns (Empty);
+  rpc CreateEntity(EntityRequest) returns (Empty);
+  rpc CreateFeatureVariant(FeatureVariantRequest) returns (Empty);
+  rpc CreateLabelVariant(LabelVariantRequest) returns (Empty);
+  rpc CreateTrainingSetVariant(TrainingSetVariantRequest) returns (Empty);
+  rpc CreateModel(ModelRequest) returns (Empty);
+  rpc RequestScheduleChange(ScheduleChangeRequest) returns (Empty);
 
-    rpc GetUsers(stream NameRequest) returns (stream User);
-    rpc GetFeatures(stream NameRequest) returns (stream Feature);
-    rpc GetFeatureVariants(stream NameVariantRequest) returns (stream FeatureVariant);
-    rpc GetLabels(stream NameRequest) returns (stream Label);
-    rpc GetLabelVariants(stream NameVariantRequest) returns (stream LabelVariant);
-    rpc GetTrainingSets(stream NameRequest) returns (stream TrainingSet);
-    rpc GetTrainingSetVariants(stream NameVariantRequest) returns (stream TrainingSetVariant);
-    rpc GetSources(stream NameRequest) returns (stream Source);
-    rpc GetSourceVariants(stream NameVariantRequest) returns (stream SourceVariant);
-    rpc GetProviders(stream NameRequest) returns (stream Provider);
-    rpc GetEntities(stream NameRequest) returns (stream Entity);
-    rpc GetModels(stream NameRequest) returns (stream Model);
+  rpc GetUsers(stream NameRequest) returns (stream User);
+  rpc GetFeatures(stream NameRequest) returns (stream Feature);
+  rpc GetFeatureVariants(stream NameVariantRequest) returns (stream FeatureVariant);
+  rpc GetLabels(stream NameRequest) returns (stream Label);
+  rpc GetLabelVariants(stream NameVariantRequest) returns (stream LabelVariant);
+  rpc GetTrainingSets(stream NameRequest) returns (stream TrainingSet);
+  rpc GetTrainingSetVariants(stream NameVariantRequest) returns (stream TrainingSetVariant);
+  rpc GetSources(stream NameRequest) returns (stream Source);
+  rpc GetSourceVariants(stream NameVariantRequest) returns (stream SourceVariant);
+  rpc GetProviders(stream NameRequest) returns (stream Provider);
+  rpc GetEntities(stream NameRequest) returns (stream Entity);
+  rpc GetModels(stream NameRequest) returns (stream Model);
 
-    /**
-      * GetEquivalent returns a resourceVariant that matches on key attributes,
-      * i.e. for a sourceVariant it will only match on key attributes (name, definition, owner, provider)
-     */
-    rpc GetEquivalent(GetEquivalentRequest) returns (ResourceVariant);
-    rpc Run(RunRequest) returns (Empty);
 
-    rpc ListFeatures(ListRequest) returns (stream Feature);
-    rpc ListLabels(ListRequest) returns (stream Label);
-    rpc ListTrainingSets(ListRequest) returns (stream TrainingSet);
-    rpc ListSources(ListRequest) returns (stream Source);
-    rpc ListUsers(ListRequest) returns (stream User);
-    rpc ListProviders(ListRequest) returns (stream Provider);
-    rpc ListEntities(ListRequest) returns (stream Entity);
-    rpc ListModels(ListRequest) returns (stream Model);
+  // Deletion API
+  // Initiates the deletion process by flagging the resource for removal.
+  rpc MarkForDeletion(MarkForDeletionRequest) returns (MarkForDeletionResponse);
+  // Completes the deletion process by updating the resource status to 'deleted' in metadata during the deletion task.
+  rpc FinalizeDeletion(FinalizeDeletionRequest) returns (FinalizeDeletionResponse);
+  // Retrieves the resource that is staged for deletion.
+  rpc GetStagedForDeletionResource(GetStagedForDeletionResourceRequest) returns (GetStagedForDeletionResourceResponse);
 
-    rpc SetResourceStatus(SetStatusRequest) returns (Empty);
+  /**
+    * GetEquivalent returns a resourceVariant that matches on key attributes,
+    * i.e. for a sourceVariant it will only match on key attributes (name, definition, owner, provider)
+   */
+  rpc GetEquivalent(GetEquivalentRequest) returns (ResourceVariant);
+  rpc Run(RunRequest) returns (Empty);
+
+  rpc ListFeatures(ListRequest) returns (stream Feature);
+  rpc ListLabels(ListRequest) returns (stream Label);
+  rpc ListTrainingSets(ListRequest) returns (stream TrainingSet);
+  rpc ListSources(ListRequest) returns (stream Source);
+  rpc ListUsers(ListRequest) returns (stream User);
+  rpc ListProviders(ListRequest) returns (stream Provider);
+  rpc ListEntities(ListRequest) returns (stream Entity);
+  rpc ListModels(ListRequest) returns (stream Model);
+
+  rpc SetResourceStatus(SetStatusRequest) returns (Empty);
 }
 
 service Api {
-    rpc CreateUser(UserRequest) returns (Empty);
-    rpc CreateProvider(ProviderRequest) returns (Empty);
-    rpc CreateSourceVariant(SourceVariantRequest) returns (Empty);
-    rpc CreateEntity(EntityRequest) returns (Empty);
-    rpc CreateFeatureVariant(FeatureVariantRequest) returns (Empty);
-    rpc CreateLabelVariant(LabelVariantRequest) returns (Empty);
-    rpc CreateTrainingSetVariant(TrainingSetVariantRequest) returns (Empty);
-    rpc CreateModel(ModelRequest) returns (Empty);
-    rpc RequestScheduleChange(ScheduleChangeRequest) returns (Empty);
+  rpc CreateUser(UserRequest) returns (Empty);
+  rpc CreateProvider(ProviderRequest) returns (Empty);
+  rpc CreateSourceVariant(SourceVariantRequest) returns (Empty);
+  rpc CreateEntity(EntityRequest) returns (Empty);
+  rpc CreateFeatureVariant(FeatureVariantRequest) returns (Empty);
+  rpc CreateLabelVariant(LabelVariantRequest) returns (Empty);
+  rpc CreateTrainingSetVariant(TrainingSetVariantRequest) returns (Empty);
+  rpc CreateModel(ModelRequest) returns (Empty);
+  rpc RequestScheduleChange(ScheduleChangeRequest) returns (Empty);
 
-    rpc GetUsers(stream NameRequest) returns (stream User);
-    rpc GetFeatures(stream NameRequest) returns (stream Feature);
-    rpc GetFeatureVariants(stream NameVariantRequest) returns (stream FeatureVariant);
-    rpc GetLabels(stream NameRequest) returns (stream Label);
-    rpc GetLabelVariants(stream NameVariantRequest) returns (stream LabelVariant);
-    rpc GetTrainingSets(stream NameRequest) returns (stream TrainingSet);
-    rpc GetTrainingSetVariants(stream NameVariantRequest) returns (stream TrainingSetVariant);
-    rpc GetSources(stream NameRequest) returns (stream Source);
-    rpc GetSourceVariants(stream NameVariantRequest) returns (stream SourceVariant);
-    rpc GetProviders(stream NameRequest) returns (stream Provider);
-    rpc GetEntities(stream NameRequest) returns (stream Entity);
-    rpc GetModels(stream NameRequest) returns (stream Model);
-    /**
-      * GetEquivalent returns a resourceVariant that matches on key attributes,
-      * i.e. for a sourceVariant it will only match on key attributes (name, definition, owner, provider)
-     */
-    rpc GetEquivalent(GetEquivalentRequest) returns (ResourceVariant);
-    rpc Run(RunRequest) returns (Empty);
+  rpc GetUsers(stream NameRequest) returns (stream User);
+  rpc GetFeatures(stream NameRequest) returns (stream Feature);
+  rpc GetFeatureVariants(stream NameVariantRequest) returns (stream FeatureVariant);
+  rpc GetLabels(stream NameRequest) returns (stream Label);
+  rpc GetLabelVariants(stream NameVariantRequest) returns (stream LabelVariant);
+  rpc GetTrainingSets(stream NameRequest) returns (stream TrainingSet);
+  rpc GetTrainingSetVariants(stream NameVariantRequest) returns (stream TrainingSetVariant);
+  rpc GetSources(stream NameRequest) returns (stream Source);
+  rpc GetSourceVariants(stream NameVariantRequest) returns (stream SourceVariant);
+  rpc GetProviders(stream NameRequest) returns (stream Provider);
+  rpc GetEntities(stream NameRequest) returns (stream Entity);
+  rpc GetModels(stream NameRequest) returns (stream Model);
+  /**
+    * GetEquivalent returns a resourceVariant that matches on key attributes,
+    * i.e. for a sourceVariant it will only match on key attributes (name, definition, owner, provider)
+   */
 
-    rpc ListFeatures(ListRequest) returns (stream Feature);
-    rpc ListLabels(ListRequest) returns (stream Label);
-    rpc ListTrainingSets(ListRequest) returns (stream TrainingSet);
-    rpc ListSources(ListRequest) returns (stream Source);
-    rpc ListUsers(ListRequest) returns (stream User);
-    rpc ListProviders(ListRequest) returns (stream Provider);
-    rpc ListEntities(ListRequest) returns (stream Entity);
-    rpc ListModels(ListRequest) returns (stream Model);
-    rpc WriteFeatures(stream StreamingFeatureVariant) returns (Empty);
-    rpc WriteLabels(stream StreamingLabelVariant) returns (Empty);
+  rpc MarkForDeletion(MarkForDeletionRequest) returns (MarkForDeletionResponse);
+
+  rpc GetEquivalent(GetEquivalentRequest) returns (ResourceVariant);
+  rpc Run(RunRequest) returns (Empty);
+
+  rpc ListFeatures(ListRequest) returns (stream Feature);
+  rpc ListLabels(ListRequest) returns (stream Label);
+  rpc ListTrainingSets(ListRequest) returns (stream TrainingSet);
+  rpc ListSources(ListRequest) returns (stream Source);
+  rpc ListUsers(ListRequest) returns (stream User);
+  rpc ListProviders(ListRequest) returns (stream Provider);
+  rpc ListEntities(ListRequest) returns (stream Entity);
+  rpc ListModels(ListRequest) returns (stream Model);
+  rpc WriteFeatures(stream StreamingFeatureVariant) returns (Empty);
+  rpc WriteLabels(stream StreamingLabelVariant) returns (Empty);
 }
 
 message PassThroughAuthConfig {}
 
 message Name {
-    string name = 1;
+  string name = 1;
 }
 
 message NameRequest {
-    Name name = 1;
-    string request_id = 2;
+  Name name = 1;
+  string request_id = 2;
 }
 
 
 message ErrorStatus {
-    // The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
-    int32 code = 1;
+  // The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+  int32 code = 1;
 
-    // A developer-facing error message, which should be in English. Any
-    // user-facing error message should be localized and sent in the
-    // [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
-    string message = 2;
+  // A developer-facing error message, which should be in English. Any
+  // user-facing error message should be localized and sent in the
+  // [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+  string message = 2;
 
-    // A list of messages that carry the error details.  There will be a
-    // common set of message types for APIs to use.
-    repeated google.protobuf.Any details = 3;
+  // A list of messages that carry the error details.  There will be a
+  // common set of message types for APIs to use.
+  repeated google.protobuf.Any details = 3;
 }
 
 // TODO: Deprecate this field in buildable resources when scheduling is fully implemented
 message ResourceStatus {
-    enum Status {
-        NO_STATUS = 0;
-        CREATED = 1;
-        PENDING = 2;
-        READY = 3;
-        FAILED = 4;
-        RUNNING = 5;
-        CANCELLED = 6;
-    }
-    Status status = 1;
-    string error_message = 2;
-    ErrorStatus error_status = 3;
+  enum Status {
+    NO_STATUS = 0;
+    CREATED = 1;
+    PENDING = 2;
+    READY = 3;
+    FAILED = 4;
+    RUNNING = 5;
+    CANCELLED = 6;
+    DELETING = 7;
+  }
+  Status status = 1;
+  string error_message = 2;
+  ErrorStatus error_status = 3;
 }
 
 enum ResourceType {
-    FEATURE = 0;
-    LABEL = 1;
-    TRAINING_SET = 2;
-    SOURCE = 3;
-    FEATURE_VARIANT = 4;
-    LABEL_VARIANT = 5;
-    TRAINING_SET_VARIANT = 6;
-    SOURCE_VARIANT = 7;
-    PROVIDER = 8;
-    ENTITY = 9;
-    MODEL = 10;
-    USER = 11;
+  FEATURE = 0;
+  LABEL = 1;
+  TRAINING_SET = 2;
+  SOURCE = 3;
+  FEATURE_VARIANT = 4;
+  LABEL_VARIANT = 5;
+  TRAINING_SET_VARIANT = 6;
+  SOURCE_VARIANT = 7;
+  PROVIDER = 8;
+  ENTITY = 9;
+  MODEL = 10;
+  USER = 11;
 }
 
 message ResourceID {
-    NameVariant resource = 1;
-    ResourceType resource_type = 2;
+  NameVariant resource = 1;
+  ResourceType resource_type = 2;
 }
 
 message SetStatusRequest {
-    ResourceID resource_id = 1;
-    ResourceStatus status = 2;
+  ResourceID resource_id = 1;
+  ResourceStatus status = 2;
 }
 
 message ScheduleChangeRequest {
-    ResourceID resource_id = 1;
-    string schedule = 2;
+  ResourceID resource_id = 1;
+  string schedule = 2;
 }
 
 message NameVariant {
-    string name = 1;
-    string variant = 2;
+  string name = 1;
+  string variant = 2;
 }
 
 message NameVariantRequest {
-    NameVariant name_variant = 1;
-    string request_id = 2;
+  NameVariant name_variant = 1;
+  string request_id = 2;
 }
 
 message Empty {}
 
 message ListRequest {
-    string request_id = 1;
+  string request_id = 1;
 }
 
 message Feature {
-    string name = 1;
-    ResourceStatus status = 2;
-    string default_variant = 3;
-    repeated string variants = 4;
+  string name = 1;
+  ResourceStatus status = 2;
+  string default_variant = 3;
+  repeated string variants = 4;
 }
 
 message Columns {
-    string entity = 1;
-    string value = 2;
-    string ts = 3;
+  string entity = 1;
+  string value = 2;
+  string ts = 3;
 }
 
 message PythonFunction {
-    bytes query = 1;
+  bytes query = 1;
 }
 
 message Stream {
-    string offline_provider = 1;
+  string offline_provider = 1;
 }
 
 enum ComputationMode {
-    PRECOMPUTED = 0;
-    CLIENT_COMPUTED = 1;
-    STREAMING = 2;
+  PRECOMPUTED = 0;
+  CLIENT_COMPUTED = 1;
+  STREAMING = 2;
 }
 
 message ResourceVariant {
-    oneof resource {
-        FeatureVariant feature_variant = 1;
-        LabelVariant label_variant = 2;
-        TrainingSetVariant training_set_variant = 3;
-        SourceVariant source_variant = 4;
-    }
+  oneof resource {
+    FeatureVariant feature_variant = 1;
+    LabelVariant label_variant = 2;
+    TrainingSetVariant training_set_variant = 3;
+    SourceVariant source_variant = 4;
+  }
 }
 
 
 message GetEquivalentRequest {
-	string request_id = 1;
-	ResourceVariant variant = 2;
+  string request_id = 1;
+  ResourceVariant variant = 2;
 }
 
 message RunRequest {
-	string request_id = 1;
-	repeated ResourceVariant variants = 2;
+  string request_id = 1;
+  repeated ResourceVariant variants = 2;
 }
 
 message FeatureVariant {
-    string name = 1;
-    string variant = 2;
-    NameVariant source = 3;
-    string entity = 5;
-    google.protobuf.Timestamp created = 6;
-    string owner = 7;
-    string description = 8;
-    string provider = 9;
-    ResourceStatus status = 10;
-    repeated NameVariant trainingsets = 11;
-    oneof location {
-        Columns columns = 12;
-        PythonFunction function = 17;
-        Stream stream = 21;
-    }
-    google.protobuf.Timestamp last_updated = 13;
-    string schedule = 14;
-    Tags tags = 15;
-    Properties properties = 16;
-    ComputationMode mode = 18;
-    string task_id = 23 [deprecated=true];
-    repeated string task_id_list = 24;
-    FeatureParameters additional_parameters = 22;
-    ValueType type = 25;
-    ResourceSnowflakeConfig resource_snowflake_config = 26;
+  string name = 1;
+  string variant = 2;
+  NameVariant source = 3;
+  string entity = 5;
+  google.protobuf.Timestamp created = 6;
+  string owner = 7;
+  string description = 8;
+  string provider = 9;
+  ResourceStatus status = 10;
+  repeated NameVariant trainingsets = 11;
+  oneof location {
+    Columns columns = 12;
+    PythonFunction function = 17;
+    Stream stream = 21;
+  }
+  google.protobuf.Timestamp last_updated = 13;
+  string schedule = 14;
+  Tags tags = 15;
+  Properties properties = 16;
+  ComputationMode mode = 18;
+  string task_id = 23 [deprecated = true];
+  repeated string task_id_list = 24;
+  FeatureParameters additional_parameters = 22;
+  ValueType type = 25;
+  ResourceSnowflakeConfig resource_snowflake_config = 26;
 }
 
 message FeatureVariantRequest {
-    FeatureVariant feature_variant = 1;
-    string request_id = 2;
-    }
+  FeatureVariant feature_variant = 1;
+  string request_id = 2;
+}
 
 message ValueType {
-    oneof Type {
-        ScalarType scalar = 1;
-        VectorType vector = 2;
-    }
+  oneof Type {
+    ScalarType scalar = 1;
+    VectorType vector = 2;
+  }
 }
 
 enum ScalarType {
-    NULL = 0;
-    INT = 1;
-    FLOAT32 = 2;
-    FLOAT64 = 3;
-    STRING = 4;
-    BOOL = 5;
-    INT32 = 6;
-    INT64 = 7;
-    DATETIME = 8;
+  NULL = 0;
+  INT = 1;
+  FLOAT32 = 2;
+  FLOAT64 = 3;
+  STRING = 4;
+  BOOL = 5;
+  INT32 = 6;
+  INT64 = 7;
+  DATETIME = 8;
 }
 
 message VectorType {
-    ScalarType scalar = 1;
-    int32 dimension = 2;
-    bool is_embedding = 3;
+  ScalarType scalar = 1;
+  int32 dimension = 2;
+  bool is_embedding = 3;
 }
 
 message FeatureParameters {
-    oneof feature_type {
-        PrecomputedFeatureParameters precomputed = 1;
-        OndemandFeatureParameters ondemand = 2;
-    }
+  oneof feature_type {
+    PrecomputedFeatureParameters precomputed = 1;
+    OndemandFeatureParameters ondemand = 2;
+  }
 }
 
 message PrecomputedFeatureParameters {
 }
 
 message OndemandFeatureParameters {
-    string definition = 1;
+  string definition = 1;
 }
 
 message FeatureLag {
-    string feature = 1;
-    string variant = 2;
-    string name = 3;
-    google.protobuf.Duration lag = 4;
+  string feature = 1;
+  string variant = 2;
+  string name = 3;
+  google.protobuf.Duration lag = 4;
 }
 
 message Label {
-    string name = 1;
-    ResourceStatus status = 2;
-    string default_variant = 3;
-    repeated string variants = 4;
+  string name = 1;
+  ResourceStatus status = 2;
+  string default_variant = 3;
+  repeated string variants = 4;
 }
 
 message LabelVariant {
-    string name = 1;
-    string variant = 2;
-    string description = 3;
-    NameVariant source = 5;
-    string entity = 6;
-    google.protobuf.Timestamp created = 7;
-    string owner = 8;
-    string provider = 9;
-    ResourceStatus status = 10;
-    repeated NameVariant trainingsets = 11;
-    oneof location {
-        Columns columns = 12;
-        Stream stream = 16;
-    }
-    Tags tags = 13;
-    Properties properties = 14;
-    string task_id = 15 [deprecated=true];
-    ValueType type = 18;
-    repeated string task_id_list = 17;
-    ResourceSnowflakeConfig resource_snowflake_config = 19;
+  string name = 1;
+  string variant = 2;
+  string description = 3;
+  NameVariant source = 5;
+  string entity = 6;
+  google.protobuf.Timestamp created = 7;
+  string owner = 8;
+  string provider = 9;
+  ResourceStatus status = 10;
+  repeated NameVariant trainingsets = 11;
+  oneof location {
+    Columns columns = 12;
+    Stream stream = 16;
+  }
+  Tags tags = 13;
+  Properties properties = 14;
+  string task_id = 15 [deprecated = true];
+  ValueType type = 18;
+  repeated string task_id_list = 17;
+  ResourceSnowflakeConfig resource_snowflake_config = 19;
 }
 
 message LabelVariantRequest {
-    LabelVariant label_variant = 1;
-    string request_id = 2;
+  LabelVariant label_variant = 1;
+  string request_id = 2;
 }
 
 message Provider {
-    string name = 1;
-    string description = 2;
-    string type = 3;
-    string software = 4;
-    string team = 5;
-    bytes serialized_config = 6;
-    ResourceStatus status = 7;
-    repeated NameVariant sources = 8;
-    repeated NameVariant features = 9;
-    repeated NameVariant trainingsets = 10;
-    repeated NameVariant labels = 11;
-    Tags tags = 12;
-    Properties properties = 13;
+  string name = 1;
+  string description = 2;
+  string type = 3;
+  string software = 4;
+  string team = 5;
+  bytes serialized_config = 6;
+  ResourceStatus status = 7;
+  repeated NameVariant sources = 8;
+  repeated NameVariant features = 9;
+  repeated NameVariant trainingsets = 10;
+  repeated NameVariant labels = 11;
+  Tags tags = 12;
+  Properties properties = 13;
 }
 
 message ProviderRequest {
-    Provider provider = 1;
-    string request_id = 2;
+  Provider provider = 1;
+  string request_id = 2;
 }
 
 message TrainingSet {
-    string name = 1;
-    ResourceStatus status = 2;
-    string default_variant = 3;
-    repeated string variants = 4;
+  string name = 1;
+  ResourceStatus status = 2;
+  string default_variant = 3;
+  repeated string variants = 4;
 }
 
 message TrainingSetVariant {
-    string name = 1;
-    string variant = 2;
-    string description = 3;
-    string owner = 4;
-    google.protobuf.Timestamp created = 5;
-    string provider = 6;
-    ResourceStatus status = 7;
-    repeated NameVariant features = 8;
-    NameVariant label = 9;
-    google.protobuf.Timestamp last_updated = 13;
-    string schedule = 14;
-    repeated FeatureLag feature_lags = 15;
-    Tags tags = 16;
-    Properties properties = 17;
-    string task_id = 18 [deprecated=true];
-    repeated string task_id_list = 19;
-    ResourceSnowflakeConfig resource_snowflake_config = 20;
+  string name = 1;
+  string variant = 2;
+  string description = 3;
+  string owner = 4;
+  google.protobuf.Timestamp created = 5;
+  string provider = 6;
+  ResourceStatus status = 7;
+  repeated NameVariant features = 8;
+  NameVariant label = 9;
+  google.protobuf.Timestamp last_updated = 13;
+  string schedule = 14;
+  repeated FeatureLag feature_lags = 15;
+  Tags tags = 16;
+  Properties properties = 17;
+  string task_id = 18 [deprecated = true];
+  repeated string task_id_list = 19;
+  ResourceSnowflakeConfig resource_snowflake_config = 20;
 }
 
 message TrainingSetVariantRequest {
-    TrainingSetVariant training_set_variant = 1;
-    string request_id = 2;
+  TrainingSetVariant training_set_variant = 1;
+  string request_id = 2;
 }
 
 message Entity {
-    string name = 1;
-    string description = 2;
-    ResourceStatus status = 3;
-    repeated NameVariant features = 4;
-    repeated NameVariant labels = 5;
-    repeated NameVariant trainingsets = 6;
-    Tags tags = 7;
-    Properties properties = 8;
+  string name = 1;
+  string description = 2;
+  ResourceStatus status = 3;
+  repeated NameVariant features = 4;
+  repeated NameVariant labels = 5;
+  repeated NameVariant trainingsets = 6;
+  Tags tags = 7;
+  Properties properties = 8;
 }
 
 message EntityRequest {
-    Entity entity = 1;
-    string request_id = 2;
+  Entity entity = 1;
+  string request_id = 2;
 }
 
 message Model {
-    string name = 1;
-    string description = 2;
-    repeated NameVariant features = 3;
-    repeated NameVariant labels = 4;
-    repeated NameVariant trainingsets = 5;
-    Tags tags = 6;
-    Properties properties = 7;
+  string name = 1;
+  string description = 2;
+  repeated NameVariant features = 3;
+  repeated NameVariant labels = 4;
+  repeated NameVariant trainingsets = 5;
+  Tags tags = 6;
+  Properties properties = 7;
 }
 
 message ModelRequest {
-    Model model = 1;
-    string request_id = 2;
+  Model model = 1;
+  string request_id = 2;
 }
 
 message User {
-    string name = 1;
-    ResourceStatus status = 2;
-    repeated NameVariant features = 3;
-    repeated NameVariant labels = 4;
-    repeated NameVariant trainingsets = 5;
-    repeated NameVariant sources = 6;
-    Tags tags = 8;
-    Properties properties = 9;
+  string name = 1;
+  ResourceStatus status = 2;
+  repeated NameVariant features = 3;
+  repeated NameVariant labels = 4;
+  repeated NameVariant trainingsets = 5;
+  repeated NameVariant sources = 6;
+  Tags tags = 8;
+  Properties properties = 9;
 }
 
 message UserRequest {
-    User user = 1;
-    string request_id = 2;
+  User user = 1;
+  string request_id = 2;
 }
 
 message Source {
-    string name = 1;
-    ResourceStatus status = 2;
-    string default_variant = 3;
-    repeated string variants = 4;
+  string name = 1;
+  ResourceStatus status = 2;
+  string default_variant = 3;
+  repeated string variants = 4;
 }
 
 message SourceVariant {
-    string name = 1;
-    string variant = 2;
-    oneof definition {
-        Transformation transformation = 14;
-        PrimaryData primaryData = 15;
-    }
-    string owner = 4;
-    string description = 5;
-    string provider = 6;
-    google.protobuf.Timestamp created = 7;
-    ResourceStatus status = 8;
-    string table = 9;
-    repeated NameVariant trainingsets = 10;
-    repeated NameVariant features = 11;
-    repeated NameVariant labels = 12;
-    google.protobuf.Timestamp last_updated = 13;
-    string schedule = 16;
-    Tags tags = 17;
-    Properties properties = 18;
-    string task_id = 19 [deprecated=true];
-    google.protobuf.Duration max_job_duration = 20;
-    repeated string task_id_list = 21;
+  string name = 1;
+  string variant = 2;
+  oneof definition {
+    Transformation transformation = 14;
+    PrimaryData primaryData = 15;
+  }
+  string owner = 4;
+  string description = 5;
+  string provider = 6;
+  google.protobuf.Timestamp created = 7;
+  ResourceStatus status = 8;
+  string table = 9;
+  repeated NameVariant trainingsets = 10;
+  repeated NameVariant features = 11;
+  repeated NameVariant labels = 12;
+  google.protobuf.Timestamp last_updated = 13;
+  string schedule = 16;
+  Tags tags = 17;
+  Properties properties = 18;
+  string task_id = 19 [deprecated = true];
+  google.protobuf.Duration max_job_duration = 20;
+  repeated string task_id_list = 21;
 }
 
 message SourceVariantRequest {
-    SourceVariant source_variant = 1;
-    string request_id = 2;
+  SourceVariant source_variant = 1;
+  string request_id = 2;
 }
 
 message SparkParam {
-    string key = 1;  // The key of the spark parameter i.e. "spark.executor.memory"
-    string value = 2; // The value of the spark parameter i.e. "2g"
+  string key = 1;  // The key of the spark parameter i.e. "spark.executor.memory"
+  string value = 2; // The value of the spark parameter i.e. "2g"
 }
 
 message WriteOption {
-    string key = 1;  // The key of the write option i.e. "mode"
-    string value = 2; // The value of the write option i.e. "overwrite"
+  string key = 1;  // The key of the write option i.e. "mode"
+  string value = 2; // The value of the write option i.e. "overwrite"
 }
 
 message TableProperty {
-    string key = 1;  // The key of the table property i.e. "partitionColumn"
-    string value = 2; // The value of the table property i.e. "date"
+  string key = 1;  // The key of the table property i.e. "partitionColumn"
+  string value = 2; // The value of the table property i.e. "date"
 }
 
 message SparkFlags {
-    repeated SparkParam spark_params = 1;
-    repeated WriteOption write_options = 2;
-    repeated TableProperty table_properties = 3;
+  repeated SparkParam spark_params = 1;
+  repeated WriteOption write_options = 2;
+  repeated TableProperty table_properties = 3;
 }
 
 message Transformation {
-    oneof type {
-        SQLTransformation SQLTransformation= 1;
-        DFTransformation DFTransformation= 2;
-    }
-    oneof args {
-        KubernetesArgs kubernetes_args = 3;
-    }
-    oneof partition {
-       HashPartition HashPartition = 4;
-       DailyPartition DailyPartition = 5;
-    }
-    SparkFlags spark_flags = 6;
-    oneof location {
-        SQLTable table = 7;
-        FileStoreTable filestore = 8;
-        CatalogTable catalog = 9;
-    }
-    Kafka kafka = 10;
+  oneof type {
+    SQLTransformation SQLTransformation = 1;
+    DFTransformation DFTransformation = 2;
+  }
+  oneof args {
+    KubernetesArgs kubernetes_args = 3;
+  }
+  oneof partition {
+    HashPartition HashPartition = 4;
+    DailyPartition DailyPartition = 5;
+  }
+  SparkFlags spark_flags = 6;
+  oneof location {
+    SQLTable table = 7;
+    FileStoreTable filestore = 8;
+    CatalogTable catalog = 9;
+  }
+  Kafka kafka = 10;
 }
 
 message HashPartition {
-    string column = 1;
-    int32 buckets = 2;
+  string column = 1;
+  int32 buckets = 2;
 }
 
 message DailyPartition {
-    string column = 1;
+  string column = 1;
 }
 
 message KubernetesResourceSpecs {
-    string cpu_request = 1;
-    string cpu_limit = 2;
-    string memory_request = 3;
-    string memory_limit = 4;
+  string cpu_request = 1;
+  string cpu_limit = 2;
+  string memory_request = 3;
+  string memory_limit = 4;
 }
 
 message KubernetesArgs {
-    string docker_image= 1;
-    KubernetesResourceSpecs specs = 2;
+  string docker_image = 1;
+  KubernetesResourceSpecs specs = 2;
 }
 
 
 message SQLTransformation {
-    string query = 1;
-    repeated NameVariant source = 2;
-    bool is_incremental = 3;
-    // This will be a list of NameVariants that also exist in source but
-    // that were wrapped with ff.incremental
-    repeated NameVariant incremental_source = 4;
-    ResourceSnowflakeConfig resource_snowflake_config = 5;
-    bool is_streaming = 6;
-    repeated NameVariant streaming_sources = 7;
+  string query = 1;
+  repeated NameVariant source = 2;
+  bool is_incremental = 3;
+  // This will be a list of NameVariants that also exist in source but
+  // that were wrapped with ff.incremental
+  repeated NameVariant incremental_source = 4;
+  ResourceSnowflakeConfig resource_snowflake_config = 5;
+  bool is_streaming = 6;
+  repeated NameVariant streaming_sources = 7;
 }
 
 message DFTransformation {
-    bytes query = 1;
-    repeated NameVariant inputs = 2;
-    string source_text = 3;
-    bool is_incremental = 4;
-    // This will be a list of NameVariants that also exist in source but
-    // that were wrapped with ff.incremental
-    repeated NameVariant incremental_sources = 5;
-    bool is_streaming = 6;
-    repeated NameVariant stream_sources = 7;
-    string canonical_func_text = 8;
+  bytes query = 1;
+  repeated NameVariant inputs = 2;
+  string source_text = 3;
+  bool is_incremental = 4;
+  // This will be a list of NameVariants that also exist in source but
+  // that were wrapped with ff.incremental
+  repeated NameVariant incremental_sources = 5;
+  bool is_streaming = 6;
+  repeated NameVariant stream_sources = 7;
+  string canonical_func_text = 8;
 
 }
 
 message PrimaryData {
-    oneof location {
-        SQLTable table = 1;
-        FileStoreTable filestore = 3;
-        CatalogTable catalog = 4;
-        Kafka kafka = 5;
-    }
-    string timestamp_column = 2;
+  oneof location {
+    SQLTable table = 1;
+    FileStoreTable filestore = 3;
+    CatalogTable catalog = 4;
+    Kafka kafka = 5;
+  }
+  string timestamp_column = 2;
 }
 
 message SQLTable {
-    string name = 1;
-    string database = 2;
-    string schema = 3;
+  string name = 1;
+  string database = 2;
+  string schema = 3;
 }
 
 message FileStoreTable {
-    string path = 1;
+  string path = 1;
 }
 
 message Kafka {
-    string topic = 1;
+  string topic = 1;
 }
 
 enum TableFormat {
-    ICEBERG = 0;
-    DELTA = 1;
+  ICEBERG = 0;
+  DELTA = 1;
 }
 
 message CatalogTable {
-    string database = 1;
-    string table = 2;
-    string table_format = 3;
-    // NOTE: technically, dynamic iceberg tables in Snowflake are referenced like any
-    // other table (e.g. "database"."schema"."table"), but given we're going to be writing
-    // all Featureform resources to a dedicated schema, we currently have no need to expand
-    // the fields in CatalogTable to include schema.
+  string database = 1;
+  string table = 2;
+  string table_format = 3;
+  // NOTE: technically, dynamic iceberg tables in Snowflake are referenced like any
+  // other table (e.g. "database"."schema"."table"), but given we're going to be writing
+  // all Featureform resources to a dedicated schema, we currently have no need to expand
+  // the fields in CatalogTable to include schema.
 }
 
 message Tags {
-    repeated string tag = 1;
+  repeated string tag = 1;
 }
 
 message Property {
-    oneof value {
-        string string_value = 1;
-    }
+  oneof value {
+    string string_value = 1;
+  }
 }
 
 message Properties {
-    map<string, Property> property = 1;
+  map<string, Property> property = 1;
 }
 
 message StreamingFeatureVariant {
-    string name = 1;
-    string variant = 2;
-    string entity = 3;
-    string value = 4;
-    google.protobuf.Timestamp ts = 5;
+  string name = 1;
+  string variant = 2;
+  string entity = 3;
+  string value = 4;
+  google.protobuf.Timestamp ts = 5;
 }
 
 message StreamingLabelVariant {
-    string name = 1;
-    string variant = 2;
-    string value = 3;
-    string entity = 4;
-    google.protobuf.Timestamp ts = 5;
+  string name = 1;
+  string variant = 2;
+  string value = 3;
+  string entity = 4;
+  google.protobuf.Timestamp ts = 5;
 }
 
 enum RefreshMode {
-    REFRESH_MODE_UNSPECIFIED = 0;
-    REFRESH_MODE_AUTO = 1;
-    REFRESH_MODE_FULL = 2;
-    REFRESH_MODE_INCREMENTAL = 3;
+  REFRESH_MODE_UNSPECIFIED = 0;
+  REFRESH_MODE_AUTO = 1;
+  REFRESH_MODE_FULL = 2;
+  REFRESH_MODE_INCREMENTAL = 3;
 }
 
 enum Initialize {
-    INITIALIZE_UNSPECIFIED = 0;
-    INITIALIZE_ON_CREATE = 1;
-    INITIALIZE_ON_SCHEDULE = 2;
+  INITIALIZE_UNSPECIFIED = 0;
+  INITIALIZE_ON_CREATE = 1;
+  INITIALIZE_ON_SCHEDULE = 2;
 }
 
 message ResourceSnowflakeConfig {
-    SnowflakeDynamicTableConfig dynamic_table_config = 1;
-    string warehouse = 2;
+  SnowflakeDynamicTableConfig dynamic_table_config = 1;
+  string warehouse = 2;
 }
 
 message SnowflakeDynamicTableConfig {
-    string target_lag = 1;
-    RefreshMode refresh_mode = 2;
-    Initialize initialize = 3;
+  string target_lag = 1;
+  RefreshMode refresh_mode = 2;
+  Initialize initialize = 3;
+}
+
+message MarkForDeletionRequest {
+  ResourceID resource_id = 1;
+}
+
+message MarkForDeletionResponse {
+}
+
+message FinalizeDeletionRequest {
+  ResourceID resource_id = 1;
+}
+
+message FinalizeDeletionResponse {
+}
+
+message GetStagedForDeletionResourceRequest {
+  ResourceID resource_id = 1;
+}
+
+message GetStagedForDeletionResourceResponse {
+  ResourceVariant resource_variant = 1;
 }

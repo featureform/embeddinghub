@@ -36,7 +36,7 @@ func (m *memoryStorageImplementation) Set(key string, value string) error {
 	return nil
 }
 
-func (m *memoryStorageImplementation) Get(key string) (string, error) {
+func (m *memoryStorageImplementation) Get(key string, opts ...query.Query) (string, error) {
 	if key == "" {
 		return "", fferr.NewInvalidArgumentError(fmt.Errorf("key is empty"))
 	}
@@ -93,4 +93,8 @@ func (m *memoryStorageImplementation) Delete(key string) (string, error) {
 
 func (m *memoryStorageImplementation) Close() {
 	// Do nothing
+}
+
+func (m *memoryStorageImplementation) Type() MetadataStorageType {
+	return MemoryMetadataStorage
 }

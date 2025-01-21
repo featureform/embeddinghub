@@ -119,6 +119,7 @@ enum TaskType {
   RESOURCE_CREATION = 0;
   HEALTH_CHECK = 1;
   METRICS = 2;
+  RESOURCE_DELETION = 3;
 }
 
 enum TriggerType {
@@ -146,6 +147,7 @@ message TaskRunMetadata {
   featureform.serving.metadata.proto.ResourceStatus status = 13;
   RunID last_successful = 14;
   ResumeID resumeID = 15;
+  bool isDelete = 16;
 }
 
 message TaskRunList {

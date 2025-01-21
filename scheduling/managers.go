@@ -119,11 +119,13 @@ func NewPSQLTaskMetadataManagerFromEnv() (TaskMetadataManager, error) {
 func NewPSQLTaskMetadataManager(config helpers.PSQLConfig) (TaskMetadataManager, error) {
 	psqlLocker, err := ffsync.NewPSQLLocker(config)
 	if err != nil {
+		logger.Infow("failed to create PSQL locker", "error", err)
 		return TaskMetadataManager{}, err
 	}
 
 	psqlStorage, err := ss.NewPSQLStorageImplementation(config, "ff_task_metadata")
 	if err != nil {
+		logger.Info("failed to create PSQL storage implementation", err)
 		return TaskMetadataManager{}, err
 	}
 

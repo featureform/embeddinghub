@@ -9,6 +9,7 @@ package provider
 
 import (
 	"fmt"
+	pl "github.com/featureform/provider/location"
 
 	"github.com/featureform/fferr"
 	fs "github.com/featureform/filestore"
@@ -150,6 +151,10 @@ func (store *localOnlineStore) Close() error {
 
 func (store *localOnlineStore) CheckHealth() (bool, error) {
 	return false, fmt.Errorf("provider health check not implemented")
+}
+
+func (store localOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 type localOnlineTable map[string]interface{}

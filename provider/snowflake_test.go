@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/featureform/fferr"
 	"os"
 	"reflect"
 	"strings"
@@ -551,6 +552,25 @@ func TestSnowflakeDeserializeLegacyCredentials(t *testing.T) {
 	}
 }
 
+func TestSnowflakeDelete(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests")
+	}
+	tester := getConfiguredTester(t, true)
+	testCases := map[string]func(t *testing.T, storeTester offlineSqlTest){
+		// "DeleteTableTest": DeleteTableTest,
+		"DeleteNotExistingTableTest": DeleteNotExistingTableTest,
+	}
+	for name, testCase := range testCases {
+		constName := name
+		constTestCase := testCase
+		t.Run(constName, func(t *testing.T) {
+			t.Parallel()
+			constTestCase(t, tester)
+		})
+	}
+}
+
 // TEST FUNCTION
 
 func CrossDatabaseJoinTest(t *testing.T, tester offlineSqlTest) {
@@ -936,6 +956,39 @@ func RegisterTrainingSet(t *testing.T, tester offlineSqlTest, tsDatasetType trai
 		t.Fatalf("could not get training set: %v", err)
 	}
 	tsTest.data.Assert(t, ts)
+}
+
+func DeleteTableTest(t *testing.T, tester offlineSqlTest) {
+	dbName := fmt.Sprintf("DB_%s", strings.ToUpper(uuid.NewString()[:5]))
+	t.Logf("Database Name1: %s\n", dbName)
+	if err := tester.storeTester.CreateDatabase(dbName); err != nil {
+		t.Fatalf("could not create database: %v", err)
+	}
+	// Create the table
+	tableName := "DUMMY_TABLE"
+	sqlLocation := location.NewSQLLocationWithDBSchemaTable(dbName, "PUBLIC", tableName).(*location.SQLLocation)
+	_, err := createDummyTable(tester.storeTester, *sqlLocation, 3)
+	if err != nil {
+		t.Fatalf("could not create table: %v", err)
+	}
+	if err := tester.storeTester.Delete(sqlLocation); err != nil {
+		t.Fatalf("could not delete table: %v", err)
+	}
+}
+func DeleteNotExistingTableTest(t *testing.T, tester offlineSqlTest) {
+	dbName := fmt.Sprintf("DB_%s", strings.ToUpper(uuid.NewString()[:5]))
+	t.Logf("Database Name1: %s\n", dbName)
+	if err := tester.storeTester.CreateDatabase(dbName); err != nil {
+		t.Fatalf("could not create database: %v", err)
+	}
+	loc := location.NewSQLLocationWithDBSchemaTable(dbName, "PUBLIC", "NOT_EXISTING_TABLE").(*location.SQLLocation)
+	deleteErr := tester.storeTester.Delete(loc)
+	if deleteErr == nil {
+		t.Fatalf("expected error deleting table")
+	}
+	if _, ok := deleteErr.(*fferr.DatasetNotFoundError); !ok {
+		t.Fatalf("expected DatasetNotFoundError")
+	}
 }
 
 // HELPER FUNCTIONS

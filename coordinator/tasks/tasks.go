@@ -86,17 +86,28 @@ type BaseTask struct {
 	taskDef            scheduling.TaskRunMetadata
 	lastSuccessfulTask scheduling.TaskRunMetadata
 	isUpdate           bool
+	isDelete           bool
 	spawner            spawner.JobSpawner
 	logger             logging.Logger
 	config             TaskConfig
 }
 
-func NewBaseTask(metadata *metadata.Client, taskDef scheduling.TaskRunMetadata, lastSuccessfulTask scheduling.TaskRunMetadata, isUpdate bool, spawner spawner.JobSpawner, logger logging.Logger, config TaskConfig) BaseTask {
+func NewBaseTask(
+	metadata *metadata.Client,
+	taskDef scheduling.TaskRunMetadata,
+	lastSuccessfulTask scheduling.TaskRunMetadata,
+	isUpdate bool,
+	isDelete bool,
+	spawner spawner.JobSpawner,
+	logger logging.Logger,
+	config TaskConfig,
+) BaseTask {
 	return BaseTask{
 		metadata:           metadata,
 		taskDef:            taskDef,
 		lastSuccessfulTask: lastSuccessfulTask,
 		isUpdate:           isUpdate,
+		isDelete:           isDelete,
 		spawner:            spawner,
 		logger:             logger,
 		config:             config,

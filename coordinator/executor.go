@@ -82,6 +82,7 @@ func (e *Executor) RunTask(tid scheduling.TaskID, rid scheduling.TaskRunID) erro
 	}
 
 	logger = logger.With("target", run.Target)
+	logger.Debugw("Task run started", "run", run)
 
 	// Stop attempting to run the run
 	// In the future we should differentiate so we know if we need to cancel other runs
@@ -206,9 +207,8 @@ func (e *Executor) getTaskRunner(runMetadata scheduling.TaskRunMetadata, lastSuc
 	taskConfig := tasks.TaskConfig{
 		DependencyPollInterval: e.config.DependencyPollInterval,
 	}
-	baseTask := tasks.NewBaseTask(e.metadata, runMetadata, lastSuccessfulRun, isUpdate, e.spawner, logger, taskConfig)
-	logger = logger.WithValues(baseTask.Redacted())
-	logger.Info("Base task created")
+	baseTask := tasks.NewBaseTask(e.metadata, runMetadata, lastSuccessfulRun, isUpdate, runMetadata.IsDelete, e.spawner, logger, taskConfig)
+	e.logger.Infow("Base task created", "task", baseTask.Redacted())
 	return tasks.Get(runMetadata.TargetType, baseTask)
 }
 

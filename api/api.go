@@ -104,6 +104,21 @@ func (serv *MetadataServer) CreateUser(ctx context.Context, userRequest *pb.User
 	return out, nil
 }
 
+func (serv *MetadataServer) MarkForDeletion(ctx context.Context, req *pb.MarkForDeletionRequest) (*pb.MarkForDeletionResponse, error) {
+	_, ctx, logger := serv.Logger.InitializeRequestID(ctx)
+	logger = logger.WithResource(logging.ResourceTypeFromProto(req.ResourceId.ResourceType), req.ResourceId.Resource.Name, req.ResourceId.Resource.Variant)
+	logger.Infow("Deleting Resource")
+
+	out, err := serv.meta.MarkForDeletion(ctx, req)
+	if err != nil {
+		serv.Logger.Errorw("Failed to mark resource for deletion", "error", err)
+		return nil, err
+	}
+
+	logger.Infow("Successfully marked resource for deletion")
+	return out, nil
+}
+
 // rpc GetUsers(stream Name) returns (stream User);
 // - Anyone can get
 func (serv *MetadataServer) GetUsers(stream pb.Api_GetUsersServer) error {

@@ -38,6 +38,18 @@ func NewDatasetNotFoundError(resourceName, resourceVariant string, err error) *D
 	}
 }
 
+func NewDatasetLocationNotFoundError(loc string, err error) *DatasetNotFoundError {
+	if err == nil {
+		err = fmt.Errorf("dataset location not found")
+	}
+	baseError := newBaseError(err, DATASET_NOT_FOUND, codes.NotFound)
+	baseError.AddDetail("location", loc)
+
+	return &DatasetNotFoundError{
+		baseError,
+	}
+}
+
 type DatasetNotFoundError struct {
 	baseError
 }

@@ -85,7 +85,7 @@ func compileValueEquals(qry query.ValueEquals, argNum int) (string, []any, error
 	}
 
 	// need special handling for NULL; can't use in args nor works with =, != in psql
-	if qry.Value == "NULL" {
+	if qry.Value == "NULL" || qry.Value == nil {
 		if qry.Not {
 			return fmt.Sprintf("%s IS NOT NULL", clmStr), nil, nil
 		}

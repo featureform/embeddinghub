@@ -56,6 +56,30 @@ func NewPSQLPoolConnection(config PSQLConfig) (*pgxpool.Pool, error) {
 	return db, nil
 }
 
+func NewMetadataPSQLConfigFromEnv() PSQLConfig {
+	config := PSQLConfig{
+		Host:     GetEnv("PSQL_HOST", "localhost"),
+		Port:     GetEnv("PSQL_PORT", "5432"),
+		User:     GetEnv("PSQL_USER", "postgres"),
+		Password: GetEnv("PSQL_PASSWORD", "password"),
+		DBName:   GetEnv("PSQL_DB", "postgres"),
+		SSLMode:  GetEnv("PSQL_SSLMODE", "disable"),
+	}
+	return config
+}
+
+func NewMetadataPSQLConfigForTesting() PSQLConfig {
+	config := PSQLConfig{
+		Host:     "localhost",
+		User:     "postgres",
+		Password: "password",
+		Port:     "5432",
+		DBName:   "postgres",
+		SSLMode:  "disable",
+	}
+	return config
+}
+
 type PSQLConfig struct {
 	Host     string
 	Port     string

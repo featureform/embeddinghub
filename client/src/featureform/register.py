@@ -25,6 +25,7 @@ from .exceptions import InvalidSQLQuery
 from .get import *
 from .grpc_client import GrpcClient
 from .list import *
+from .logging import setup_logging
 from .parse import *
 from .proto import metadata_pb2_grpc as ff_grpc
 from .resources import *
@@ -882,6 +883,9 @@ class SubscriptableTransformation:
     def name_variant(self):
         return self.transformation.name_variant()
 
+    def get_resource_type(self):
+        return self.transformation.get_resource_type()
+
     def __getitem__(self, columns: List[str]):
         col_len = len(columns)
         if col_len < 2:
@@ -1014,6 +1018,9 @@ class SQLTransformationDecorator:
 
     def name_variant(self):
         return (self.name, self.variant)
+
+    def get_resource_type(self):
+        return ResourceType.SOURCE_VARIANT
 
     def register_resources(
         self,
@@ -4811,6 +4818,8 @@ class ResourceClient:
         if dry_run:
             return
 
+        setup_logging(debug)
+
         host = host or os.getenv("FEATUREFORM_HOST")
         if host is None:
             raise RuntimeError(
@@ -4825,6 +4834,7 @@ class ResourceClient:
         self._host = host
         self._cert_path = cert_path or os.getenv("FEATUREFORM_CERT")
         self._insecure = insecure
+        self.logger = logging.getLogger(__name__)
 
     def apply(self, asynchronous=False, verbose=False):
         """
@@ -4875,6 +4885,111 @@ class ResourceClient:
             if feature_flag.is_enabled("FF_GET_EQUIVALENT_VARIANTS", True):
                 set_run("")
             clear_state()
+
+    DeletableResource = Union[
+        FeatureColumnResource,
+        SubscriptableTransformation,
+        LabelColumnResource,
+        TrainingSetVariant,
+        ColumnSourceRegistrar,
+        OnlineProvider,
+        OfflineProvider,
+    ]
+
+    def delete(
+        self,
+        source: Union[DeletableResource, str],  #  TODO: get this typing correct
+        variant: Optional[str] = None,
+        resource_type: Optional[ResourceType] = None,
+    ):
+        """
+        Delete a resource by name and variant or by resource object.
+
+        There are three ways to delete a resource:
+        1. Using a resource object (Feature, Label, Source, etc.)
+        2. Using a provider object (OnlineProvider, OfflineProvider)
+        3. Using a string name with required parameters
+
+        Examples:
+            ```python
+            import featureform as ff
+            client = ff.Client()
+
+            # Delete using string name (requires variant and resource_type)
+            client.delete("transactions", "kaggle", ff.ResourceType.SOURCE)
+
+            # Delete using resource object
+            feature = client.get_feature("my_feature", "v1")
+            client.delete(feature)
+
+            # Delete provider (no variant needed)
+            client.delete("redis_provider", resource_type=ff.ResourceType.PROVIDER)
+            ```
+
+        Args:
+            source: Either a resource object (Feature, Label, Source, etc.) or the name of the resource as a string.
+                If a string is provided, resource_type is required and variant is required for non-provider resources.
+            variant: Variant of the resource to delete. Required if source is a string and resource_type is not PROVIDER.
+            resource_type: Type of resource to delete. Required if source is a string.
+
+        Raises:
+            ValueError: If source is a string and:
+                - resource_type is not provided
+                - variant is not provided (for non-provider resources)
+        """
+        # Prepare the request based on the input type
+        request = self._create_delete_request(source, variant, resource_type)
+
+        # Send the request to delete the resource
+        self._stub.MarkForDeletion(request)
+        print("Deleting resource async")
+
+    def _create_delete_request(
+        self,
+        source: Union[DeletableResource, str],
+        variant: Optional[str] = None,
+        resource_type: Optional[ResourceType] = None,
+    ) -> metadata_pb2.MarkForDeletionRequest:
+        if isinstance(source, str):
+            if resource_type is None:
+                raise ValueError(
+                    "resource_type must be specified if source is a string"
+                )
+
+            if resource_type is ResourceType.PROVIDER:
+                return metadata_pb2.MarkForDeletionRequest(
+                    resource_id=metadata_pb2.ResourceID(
+                        resource=metadata_pb2.NameVariant(name=source),
+                        resource_type=resource_type.to_proto(),
+                    )
+                )
+
+            # All other string resources require a variant
+            if not variant:
+                raise ValueError("variant must be specified for non-provider resources")
+
+            return metadata_pb2.MarkForDeletionRequest(
+                resource_id=metadata_pb2.ResourceID(
+                    resource=metadata_pb2.NameVariant(name=source, variant=variant),
+                    resource_type=resource_type.to_proto(),
+                )
+            )
+
+        if isinstance(source, (OfflineProvider, OnlineProvider)):
+            return metadata_pb2.MarkForDeletionRequest(
+                resource_id=metadata_pb2.ResourceID(
+                    resource=metadata_pb2.NameVariant(name=source.name()),
+                    resource_type=ResourceType.PROVIDER.to_proto(),
+                )
+            )
+
+        name, variant = source.name_variant()
+        return metadata_pb2.MarkForDeletionRequest(
+            resource_id=metadata_pb2.ResourceID(
+                resource=metadata_pb2.NameVariant(name=name, variant=variant),
+                resource_type=source.get_resource_type().to_proto(),
+            )
+        )
 
     def run(self):
         """
@@ -5231,6 +5346,7 @@ class ResourceClient:
                 LabelColumnResource,
                 TrainingSetVariant,
                 ColumnSourceRegistrar,
+                SubscriptableTransformation,
             ),
         ):
             res_name = resource_name.name_variant()[0]

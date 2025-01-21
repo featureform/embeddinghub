@@ -215,3 +215,15 @@ func (MetadataServerMock) RequestScheduleChange(ctx context.Context, in *pb.Sche
 func (MetadataServerMock) Run(ctx context.Context, in *pb.RunRequest, opts ...grpc.CallOption) (*pb.Empty, error) {
 	return nil, nil
 }
+
+func (m MetadataServerMock) MarkForDeletion(ctx context.Context, in *pb.MarkForDeletionRequest, opts ...grpc.CallOption) (*pb.MarkForDeletionResponse, error) {
+	return &pb.MarkForDeletionResponse{}, nil
+}
+
+func (m MetadataServerMock) GetStagedForDeletionResource(ctx context.Context, in *pb.GetStagedForDeletionResourceRequest, opts ...grpc.CallOption) (*pb.GetStagedForDeletionResourceResponse, error) {
+	return &pb.GetStagedForDeletionResourceResponse{}, nil
+}
+
+func (m MetadataServerMock) FinalizeDeletion(ctx context.Context, in *pb.FinalizeDeletionRequest, opts ...grpc.CallOption) (*pb.FinalizeDeletionResponse, error) {
+	return &pb.FinalizeDeletionResponse{}, nil
+}

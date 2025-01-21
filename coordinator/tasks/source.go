@@ -9,6 +9,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -52,52 +53,29 @@ func (t *SourceTask) Run() error {
 		return fferr.NewInternalErrorf(errMsg)
 	}
 
-	t.logger.Info("Running register source job on resource: ", nv)
+	resID := metadata.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: metadata.SOURCE_VARIANT}
+	logger = logger.WithResource(logging.SourceVariant, resID.Name, resID.Variant)
+
+	if t.isDelete {
+		return t.handleDeletion(ctx, resID, logger)
+	}
+
+	t.logger.Infof("Running source task")
 	err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Fetching Metadata...")
 	if err != nil {
 		logger.Warnw("Failed to add run log \"Fetching metadata\" Continuing.", "error", err)
 	}
+
 	source, err := t.metadata.GetSourceVariant(ctx, metadata.NameVariant{nv.Name, nv.Variant})
 	if err != nil {
-		logger.Errorw("Failed to get source variant", "namevariant", nv, "error", err)
+		logger.Errorw("Failed to get source variant", "error", err)
 		return err
 	}
-	if err = t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Fetching Provider..."); err != nil {
-		logger.Warnw("Failed to add run log \"Fetching provider\" Continuing.", "error", err)
-	}
-	sourceProvider, err := source.FetchProvider(t.metadata, ctx)
+	sourceStore, err := getStore(t.BaseTask, t.metadata, source)
 	if err != nil {
-		logger.Errorw("Failed to fetch provider metadata", "namevariant", nv, "error", err)
+		logger.Errorw("Failed to get store", "error", err)
 		return err
 	}
-	if err := t.metadata.Tasks.AddRunLog(
-		t.taskDef.TaskId,
-		t.taskDef.ID,
-		fmt.Sprintf("Initializing Offline Store: %s...", sourceProvider.Type()),
-	); err != nil {
-		logger.Warnw("Failed to add run log \"Initializing store\" Continuing.", "error", err)
-		return err
-	}
-	p, err := provider.Get(pt.Type(sourceProvider.Type()), sourceProvider.SerializedConfig())
-	if err != nil {
-		logger.Errorw("Failed to get offline store", "config", sourceProvider.SerializedConfig(), "error", err)
-		return err
-	}
-	sourceStore, err := p.AsOfflineStore()
-	if err != nil {
-		logger.Errorw(
-			"Retrieved provider is not an offline store",
-			"provider-type", sourceProvider.Type(), "error", err,
-		)
-		return err
-	}
-	defer func(sourceStore provider.OfflineStore) {
-		err := sourceStore.Close()
-		if err != nil {
-			logger.Errorf("could not close offline store: %v", err)
-		}
-	}(sourceStore)
-	resID := metadata.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: metadata.SOURCE_VARIANT}
 	logger = logger.With(
 		"resource_id", resID,
 		"is_primary", source.IsPrimaryData(),
@@ -118,6 +96,58 @@ func (t *SourceTask) Run() error {
 		logger.Error("Unknown source type")
 		return fferr.NewInternalErrorf("source type not implemented")
 	}
+}
+
+func (t *SourceTask) handleDeletion(ctx context.Context, resID metadata.ResourceID, logger logging.Logger) error {
+	logger.Infow("Deleting source")
+	sourceToDelete, stagedDeleteErr := t.metadata.GetStagedForDeletionSourceVariant(
+		ctx,
+		metadata.NameVariant{
+			Name:    resID.Name,
+			Variant: resID.Variant,
+		})
+	if stagedDeleteErr != nil {
+		logger.Errorw("Failed to get staged for deletion source variant", "error", stagedDeleteErr)
+		return stagedDeleteErr
+	}
+
+	if sourceToDelete.IsPrimaryData() {
+		logger.Infow("Can't delete primary data table", "resource_id", resID)
+	} else {
+		tfLocation, tfLocationErr := sourceToDelete.GetTransformationLocation()
+		if tfLocationErr != nil {
+			logger.Errorw("Failed to get transformation location", "error", tfLocationErr)
+			return tfLocationErr
+		}
+
+		logger.Debugw("Deleting source at location", "location", tfLocation, "error", tfLocationErr)
+		sourceStore, err := getStore(t.BaseTask, t.metadata, sourceToDelete)
+		if err != nil {
+			logger.Errorw("Failed to get store", "error", err)
+			return err
+		}
+
+		deleteErr := sourceStore.Delete(tfLocation)
+		if deleteErr != nil {
+			var notFoundErr *fferr.DatasetNotFoundError
+			if errors.As(deleteErr, &notFoundErr) {
+				logger.Infow("Table doesn't exist at location, continuing...", "location", tfLocation)
+			} else {
+				logger.Errorw("Failed to delete source", "error", deleteErr)
+				return deleteErr
+			}
+		}
+	}
+
+	logger.Debugw("Deleting source metadata", "resource_id", resID)
+	finalizeDeleteErr := t.metadata.FinalizeDelete(ctx, resID)
+	if finalizeDeleteErr != nil {
+		logger.Errorw("Failed to finalize delete", "error", finalizeDeleteErr)
+		return finalizeDeleteErr
+	}
+
+	logger.Infow("Source deleted", "resource_id", resID)
+	return nil
 }
 
 func (t *SourceTask) runSQLTransformationJob(

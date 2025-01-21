@@ -14,7 +14,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import field
 from datetime import timedelta
-from typing import List, Tuple, Union, Optional, Any, Dict
+from typing import List, Protocol, Tuple, Union, Optional, Any, Dict, runtime_checkable
 from urllib.parse import urlencode, urlunparse
 
 import dill
@@ -1098,7 +1098,6 @@ class SnowflakeConfig:
     session_params: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
-
         if self.session_params:
             for key, _ in self.session_params.items():
                 if not SnowflakeSessionParamKey.validate_key(key):
@@ -1626,19 +1625,25 @@ class Directory(Location):
         return self.path
 
 
-class ResourceVariant(ABC):
+@runtime_checkable
+class HasNameVariant(Protocol):
+    def name_variant(self) -> Tuple[str, str]:
+        """Returns the name and variant of the resource"""
+        ...
+
+
+@runtime_checkable
+class ResourceVariant(HasNameVariant, Protocol):
     name: str
     variant: str
     server_status: ServerStatus
 
-    @staticmethod
-    def get_resource_type():
-        raise NotImplementedError
-
-    def name_variant(self):
-        return self.name, self.variant
+    def get_resource_type(self) -> ResourceType:
+        """Returns the type of the resource"""
+        ...
 
     def to_key(self) -> Tuple[ResourceType, str, str]:
+        """Returns a tuple key of (resource_type, name, variant)"""
         return self.get_resource_type(), self.name, self.variant
 
 

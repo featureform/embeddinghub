@@ -626,6 +626,10 @@ func (store *clickHouseOfflineStore) CheckHealth() (bool, error) {
 	return true, nil
 }
 
+func (store *clickHouseOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
+
 func (store *clickHouseOfflineStore) RegisterPrimaryFromSourceTable(id ResourceID, tableLocation pl.Location) (PrimaryTable, error) {
 	if err := id.check(Primary); err != nil {
 		return nil, err

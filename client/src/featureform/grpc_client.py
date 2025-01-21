@@ -14,7 +14,6 @@ from typing import Dict, Optional
 
 import grpc
 from google.rpc import error_details_pb2, status_pb2
-from .logging import setup_logging
 
 
 @dataclass
@@ -63,7 +62,6 @@ class GrpcClient:
             grpc.StatusCode.ALREADY_EXISTS,
             grpc.StatusCode.INVALID_ARGUMENT,
         ]
-        setup_logging(debug)
         self.logger = logging.getLogger(__name__)
 
     def streaming_wrapper(self, multi_threaded_rendezvous):

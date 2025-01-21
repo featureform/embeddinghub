@@ -56,6 +56,7 @@ type TaskType int32
 
 const (
 	ResourceCreation TaskType = TaskType(schpb.TaskType_RESOURCE_CREATION)
+	ResourceDeletion TaskType = TaskType(schpb.TaskType_RESOURCE_DELETION)
 	HealthCheck      TaskType = TaskType(schpb.TaskType_HEALTH_CHECK)
 	Monitoring       TaskType = TaskType(schpb.TaskType_METRICS)
 )
@@ -168,7 +169,7 @@ func (t *TaskMetadata) Unmarshal(data []byte) error {
 		return fferr.NewInvalidArgumentError(fmt.Errorf("task metadata is missing TaskType"))
 	}
 
-	validTypes := []TaskType{ResourceCreation, HealthCheck, Monitoring}
+	validTypes := []TaskType{ResourceCreation, HealthCheck, Monitoring, ResourceDeletion}
 	if !slices.Contains(validTypes, temp.TaskType) {
 		err := fferr.NewInvalidArgumentError(fmt.Errorf("task metadata has invalid TaskType"))
 		err.AddDetail("TaskType", string(temp.TaskType))

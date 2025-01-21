@@ -9,7 +9,9 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/featureform/logging"
 	"time"
 
 	"github.com/featureform/fferr"
@@ -28,13 +30,14 @@ type TrainingSetTask struct {
 }
 
 func (t *TrainingSetTask) Run() error {
-	fmt.Printf("%#v\n", t.taskDef.Target)
 	nv, ok := t.taskDef.Target.(scheduling.NameVariant)
 	if !ok {
 		return fferr.NewInternalErrorf("cannot create a source from target type: %s", t.taskDef.TargetType)
 	}
 
-	t.logger.Info("Running training set job on resource: ", "name", nv.Name, "variant", nv.Variant)
+	tsId := metadata.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: metadata.TRAINING_SET_VARIANT}
+	logger := t.logger.WithResource(logging.TrainingSetVariant, tsId.Name, tsId.Variant)
+	logger.Info("Running training set job on resource")
 	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Starting Training Set Creation..."); err != nil {
 		return err
 	}
@@ -43,37 +46,28 @@ func (t *TrainingSetTask) Run() error {
 		return err
 	}
 
+	if t.isDelete {
+		return t.handleDeletion(tsId, logger)
+	}
+
 	ts, err := t.metadata.GetTrainingSetVariant(context.Background(), metadata.NameVariant{Name: nv.Name, Variant: nv.Variant})
 	if err != nil {
 		return err
 	}
 
-	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Fetching Offline Store..."); err != nil {
-		return err
+	store, getStoreErr := getStore(t.BaseTask, t.metadata, ts)
+	if getStoreErr != nil {
+		return getStoreErr
 	}
-
-	providerEntry, err := ts.FetchProvider(t.metadata, context.Background())
-	if err != nil {
-		return err
-	}
-	t.logger.Debugw("Training set provider", "type", providerEntry.Type(), "config", providerEntry.SerializedConfig())
-	p, err := provider.Get(pt.Type(providerEntry.Type()), providerEntry.SerializedConfig())
-	if err != nil {
-		return err
-	}
-	store, err := p.AsOfflineStore()
-	if err != nil {
-		return err
-	}
-	t.logger.Debugw("Training set offline store", "type", fmt.Sprintf("%T", store))
+	logger.Debugw("Training set offline store", "type", fmt.Sprintf("%T", store))
 	defer func(store provider.OfflineStore) {
 		err := store.Close()
 		if err != nil {
-			t.logger.Errorf("could not close offline store: %v", err)
+			logger.Errorf("could not close offline store: %v", err)
 		}
 	}(store)
-	providerResID := provider.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: provider.TrainingSet}
 
+	providerResID := provider.ResourceID{Name: nv.Name, Variant: nv.Variant, Type: provider.TrainingSet}
 	if _, err := store.GetTrainingSet(providerResID); err == nil {
 		return err
 	}
@@ -153,6 +147,55 @@ func (t *TrainingSetTask) Run() error {
 	}
 
 	return t.runTrainingSetJob(trainingSetDef, store)
+}
+
+func (t *TrainingSetTask) handleDeletion(tsId metadata.ResourceID, logger logging.Logger) error {
+	logger.Debugw("Deleting training set", "resource_id", tsId)
+	tsToDelete, err := t.metadata.GetStagedForDeletionTrainingSetVariant(context.Background(),
+		metadata.NameVariant{
+			Name:    tsId.Name,
+			Variant: tsId.Variant,
+		})
+	if err != nil {
+		logger.Errorw("Failed to get training set to delete", "error", err)
+		return err
+	}
+
+	trainingSetTable, err := ps.ResourceToTableName(provider.TrainingSet.String(), tsId.Name, tsId.Variant)
+	if err != nil {
+		logger.Errorw("Failed to get table name for training set", "error", err)
+		return err
+	}
+	logger.Debugw("Deleting training set at location", "location", trainingSetTable)
+	store, getStoreErr := getStore(t.BaseTask, t.metadata, tsToDelete)
+	if getStoreErr != nil {
+		logger.Errorw("Failed to get store", "error", getStoreErr)
+		return getStoreErr
+	}
+
+	trainingSetLocation := pl.NewSQLLocation(trainingSetTable)
+
+	if err := store.Delete(trainingSetLocation); err != nil {
+		var notFoundErr *fferr.DatasetNotFoundError
+		if errors.As(err, &notFoundErr) {
+			logger.Infow("Table doesn't exist at location, continuing...", "location", trainingSetLocation)
+			// continue
+		} else {
+			logger.Errorw("Failed to delete training set", "error", err)
+			return err
+		}
+	}
+	if err := t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Training Set deleted..."); err != nil {
+		logger.Errorw("Unable to add run log", "error", err)
+		return err
+	}
+
+	logger.Debugw("Finalizing delete")
+	if err := t.metadata.FinalizeDelete(context.Background(), tsId); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (t *TrainingSetTask) getLabelSourceMapping(label *metadata.LabelVariant) (provider.SourceMapping, error) {

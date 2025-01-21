@@ -20,6 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/featureform/metadata/common"
+	"github.com/featureform/storage/query"
+
 	"github.com/featureform/metadata/equivalence"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -220,10 +223,17 @@ type ResourceID struct {
 	Type    ResourceType
 }
 
-func (id ResourceID) Proto() *pb.NameVariant {
+func (id ResourceID) NameVariantProto() *pb.NameVariant {
 	return &pb.NameVariant{
 		Name:    id.Name,
 		Variant: id.Variant,
+	}
+}
+
+func (id ResourceID) Proto() *pb.ResourceID {
+	return &pb.ResourceID{
+		Resource:     id.NameVariantProto(),
+		ResourceType: id.Type.Serialized(),
 	}
 }
 
@@ -310,18 +320,101 @@ func isDirectDependency(ctx context.Context, lookup ResourceLookup, dependency, 
 	return deps.Has(ctx, depId)
 }
 
+type DeletionMode int
+
+const (
+	ExcludeDeleted DeletionMode = iota // default: exclude deleted
+	IncludeDeleted
+	DeletedOnly
+)
+
+type ResourceLookupType string
+
+type ResourceLookupOption interface {
+	Type() ResourceLookupType
+}
+
+const DeleteLookupOptionType ResourceLookupType = "Deletion"
+
+type DeleteLookupOption struct {
+	deletionMode DeletionMode
+}
+
+func (opt DeleteLookupOption) Type() ResourceLookupType {
+	return DeleteLookupOptionType
+}
+
+type ResourceLookupOptions struct {
+	deletionMode DeletionMode
+}
+
+func NewResourceLookupOptions(opts ...ResourceLookupOption) (ResourceLookupOptions, error) {
+	ro := ResourceLookupOptions{
+		deletionMode: ExcludeDeleted, // default
+	}
+
+	deletionOptionSet := false
+
+	for _, opt := range opts {
+		switch opt.Type() {
+
+		case DeleteLookupOptionType:
+			// If we already saw a DeleteLookupOption, that's an error:
+			if deletionOptionSet {
+				return ro, fferr.NewInternalErrorf("multiple DeletionResourceLookupType options")
+			}
+			deletionOptionSet = true
+
+			dlo, ok := opt.(DeleteLookupOption)
+			if !ok {
+				return ro, fferr.NewInternalErrorf("failed to cast DeletionResourceLookupType option")
+			}
+
+			ro.deletionMode = dlo.deletionMode
+		}
+	}
+
+	return ro, nil
+}
+
+func (opt ResourceLookupOptions) generateQueryOpts() []query.Query {
+	var queryOpts []query.Query
+
+	switch opt.deletionMode {
+	case ExcludeDeleted:
+		// Only include non-deleted resources (deleted timestamp is NULL)
+		queryOpts = append(queryOpts, query.ValueEquals{
+			Column: query.SQLColumn{Column: "marked_for_deletion_at"},
+			Value:  nil,
+		})
+	case DeletedOnly:
+		// Only include deleted resources (deleted timestamp is not NULL)
+		queryOpts = append(queryOpts, query.ValueEquals{
+			Not:    true,
+			Column: query.SQLColumn{Column: "marked_for_deletion_at"},
+			Value:  nil,
+		})
+	case IncludeDeleted:
+		// No filter needed - include all resources regardless of deleted timestamp
+	}
+
+	return queryOpts
+}
+
 type ResourceLookup interface {
-	Lookup(context.Context, ResourceID) (Resource, error)
-	Has(context.Context, ResourceID) (bool, error)
+	Lookup(context.Context, ResourceID, ...ResourceLookupOption) (Resource, error)
+	//Lookup(context.Context, ResourceID, ResourceLookupOpts) (Resource, error)
+	Has(context.Context, ResourceID) (bool, error) // add is delete
 	Set(context.Context, ResourceID, Resource) error
-	Submap(context.Context, []ResourceID) (ResourceLookup, error)
-	ListForType(context.Context, ResourceType) ([]Resource, error)
-	List(context.Context) ([]Resource, error)
-	ListVariants(context.Context, ResourceType, string) ([]Resource, error)
+	Submap(context.Context, []ResourceID) (ResourceLookup, error)                                    // add is delete
+	ListForType(context.Context, ResourceType) ([]Resource, error)                                   // add is delete
+	List(context.Context) ([]Resource, error)                                                        // add is delete
+	ListVariants(context.Context, ResourceType, string, ...ResourceLookupOption) ([]Resource, error) // add is delete
 	HasJob(context.Context, ResourceID) (bool, error)
 	SetJob(context.Context, ResourceID, string) error
 	SetStatus(context.Context, ResourceID, *pb.ResourceStatus) error
 	SetSchedule(context.Context, ResourceID, string) error
+	Delete(context.Context, ResourceID) error
 }
 
 type resourceStatusImplementation interface {
@@ -369,7 +462,7 @@ func (wrapper SearchWrapper) Set(ctx context.Context, id ResourceID, res Resourc
 
 type LocalResourceLookup map[ResourceID]Resource
 
-func (lookup LocalResourceLookup) Lookup(ctx context.Context, id ResourceID) (Resource, error) {
+func (lookup LocalResourceLookup) Lookup(ctx context.Context, id ResourceID, opts ...ResourceLookupOption) (Resource, error) {
 	logger := logging.GetLoggerFromContext(ctx)
 	res, has := lookup[id]
 	if !has {
@@ -415,7 +508,7 @@ func (lookup LocalResourceLookup) ListForType(ctx context.Context, t ResourceTyp
 	return resources, nil
 }
 
-func (lookup LocalResourceLookup) ListVariants(ctx context.Context, t ResourceType, name string) ([]Resource, error) {
+func (lookup LocalResourceLookup) ListVariants(ctx context.Context, t ResourceType, name string, opts ...ResourceLookupOption) ([]Resource, error) {
 	resources := make([]Resource, 0)
 	for id, res := range lookup {
 		if id.Type == t && id.Name == name {
@@ -467,6 +560,11 @@ func (lookup LocalResourceLookup) SetSchedule(ctx context.Context, id ResourceID
 
 func (lookup LocalResourceLookup) HasJob(ctx context.Context, id ResourceID) (bool, error) {
 	return false, nil
+}
+
+func (lookup LocalResourceLookup) Delete(ctx context.Context, id ResourceID) error {
+	delete(lookup, id)
+	return nil
 }
 
 type sourceResource struct {
@@ -599,7 +697,7 @@ func (resource *sourceVariantResource) Proto() proto.Message {
 func (sourceVariantResource *sourceVariantResource) Notify(ctx context.Context, lookup ResourceLookup, op operation, that Resource) error {
 	id := that.ID()
 	t := id.Type
-	key := id.Proto()
+	key := id.NameVariantProto()
 	serialized := sourceVariantResource.serialized
 	switch t {
 	case TRAINING_SET_VARIANT:
@@ -835,7 +933,7 @@ func (this *featureVariantResource) Notify(ctx context.Context, lookup ResourceL
 	if !relevantOp {
 		return nil
 	}
-	key := id.Proto()
+	key := id.NameVariantProto()
 	this.serialized.Trainingsets = append(this.serialized.Trainingsets, key)
 	return nil
 }
@@ -1078,7 +1176,7 @@ func (this *labelVariantResource) Notify(ctx context.Context, lookup ResourceLoo
 	if !releventOp {
 		return nil
 	}
-	key := id.Proto()
+	key := id.NameVariantProto()
 	this.serialized.Trainingsets = append(this.serialized.Trainingsets, key)
 	return nil
 }
@@ -1365,7 +1463,8 @@ func (resource *trainingSetVariantResource) Owner() string {
 }
 
 func (resource *trainingSetVariantResource) Validate(ctx context.Context, lookup ResourceLookup) error {
-	label, err := lookup.Lookup(ctx, ResourceID{Name: resource.serialized.Label.Name, Variant: resource.serialized.Label.Variant, Type: LABEL_VARIANT})
+	resId := ResourceID{Name: resource.serialized.Label.Name, Variant: resource.serialized.Label.Variant, Type: LABEL_VARIANT}
+	label, err := lookup.Lookup(ctx, resId)
 	if err != nil {
 		return err
 	}
@@ -1375,7 +1474,8 @@ func (resource *trainingSetVariantResource) Validate(ctx context.Context, lookup
 	}
 	entityMap := map[string]struct{}{labelVariant.serialized.Entity: {}}
 	for _, feature := range resource.serialized.Features {
-		featureResource, err := lookup.Lookup(ctx, ResourceID{Name: feature.Name, Variant: feature.Variant, Type: FEATURE_VARIANT})
+		fvResId := ResourceID{Name: feature.Name, Variant: feature.Variant, Type: FEATURE_VARIANT}
+		featureResource, err := lookup.Lookup(ctx, fvResId)
 		if err != nil {
 			return err
 		}
@@ -1534,7 +1634,7 @@ func (this *userResource) Notify(ctx context.Context, lookup ResourceLookup, op 
 		return nil
 	}
 	id := that.ID()
-	key := id.Proto()
+	key := id.NameVariantProto()
 	t := id.Type
 	serialized := this.serialized
 	switch t {
@@ -1618,7 +1718,7 @@ func (this *providerResource) Notify(ctx context.Context, lookup ResourceLookup,
 		return nil
 	}
 	id := that.ID()
-	key := id.Proto()
+	key := id.NameVariantProto()
 	t := id.Type
 	serialized := this.serialized
 	switch t {
@@ -1745,7 +1845,7 @@ func (resource *entityResource) Proto() proto.Message {
 
 func (this *entityResource) Notify(ctx context.Context, lookup ResourceLookup, op operation, that Resource) error {
 	id := that.ID()
-	key := id.Proto()
+	key := id.NameVariantProto()
 	t := id.Type
 	serialized := this.serialized
 	switch t {
@@ -1792,7 +1892,8 @@ type MetadataServer struct {
 	taskManager *scheduling.TaskMetadataManager
 	pb.UnimplementedMetadataServer
 	schproto.UnimplementedTasksServer
-	slackNotifier notifications.SlackNotifier
+	slackNotifier       notifications.SlackNotifier
+	resourcesRepository ResourcesRepository
 }
 
 func (serv *MetadataServer) CreateTaskRun(ctx context.Context, request *schproto.CreateRunRequest) (*schproto.RunID, error) {
@@ -1825,12 +1926,18 @@ func NewMetadataServer(config *Config) (*MetadataServer, error) {
 	if err != nil {
 		return nil, err
 	}
+	resourcesRepo, err := NewResourcesRepositoryFromLookup(&baseLookup)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MetadataServer{
-		lookup:        wrappedLookup,
-		address:       config.Address,
-		Logger:        config.Logger,
-		taskManager:   &config.TaskManager,
-		slackNotifier: *notifications.NewSlackNotifier(os.Getenv("SLACK_CHANNEL_ID"), config.Logger),
+		lookup:              wrappedLookup,
+		address:             config.Address,
+		Logger:              config.Logger,
+		taskManager:         &config.TaskManager,
+		resourcesRepository: resourcesRepo,
+		slackNotifier:       *notifications.NewSlackNotifier(os.Getenv("SLACK_CHANNEL_ID"), config.Logger),
 	}, nil
 }
 
@@ -2238,6 +2345,224 @@ func (serv *MetadataServer) CreateFeatureVariant(ctx context.Context, variantReq
 			},
 		}
 	})
+}
+
+func (serv *MetadataServer) MarkForDeletion(ctx context.Context, request *pb.MarkForDeletionRequest) (*pb.MarkForDeletionResponse, error) {
+	_, ctx, logger := serv.Logger.InitializeRequestID(ctx)
+	logger.Infow("Deleting resource", "resource_id", request.ResourceId)
+
+	if serv.resourcesRepository.Type() == ResourcesRepositoryTypeMemory {
+		logger.Infow("Deletion not supported for memory repository")
+		return &pb.MarkForDeletionResponse{}, fferr.NewInternalErrorf("Deletion not supported for memory repository")
+	}
+
+	resId := common.ResourceID{Name: request.ResourceId.Resource.Name, Variant: request.ResourceId.Resource.Variant, Type: common.ResourceType(request.ResourceId.ResourceType)}
+	notCommonResId := ResourceID{Name: resId.Name, Variant: resId.Variant, Type: ResourceType(resId.Type)}
+
+	resource, err := serv.lookup.Lookup(ctx, notCommonResId)
+	if err != nil {
+		logger.Errorw("Could not find resource to delete", "error", err.Error())
+		return &pb.MarkForDeletionResponse{}, err
+	}
+
+	//status, err := serv.getStatusFromTasks(ctx, resource)
+	//if err != nil {
+	//	logger.Errorw("Could not get status from tasks", "error", err.Error())
+	//	return &pb.MarkForDeletionResponse{}, err
+	//}
+
+	//if status != pb.ResourceStatus_READY && status != pb.ResourceStatus_CREATED {
+	//	logger.Errorw("Resource is not ready for deletion", "status", status)
+	//	return &pb.MarkForDeletionResponse{}, fferr.NewInternalErrorf("Resource is not ready for deletion")
+	//}
+
+	isDeletableErr := serv.isDeletable(ctx, resource)
+	if isDeletableErr != nil {
+		logger.Errorw("Could not delete resource", "error", isDeletableErr.Error())
+		return &pb.MarkForDeletionResponse{}, isDeletableErr
+	}
+
+	deleteErr := serv.resourcesRepository.MarkForDeletion(ctx, resId)
+	if deleteErr != nil {
+		logger.Errorw("Could not delete resource", "error", deleteErr.Error())
+		return &pb.MarkForDeletionResponse{}, deleteErr
+	}
+
+	if serv.needsJob(resource) {
+		taskTarget := scheduling.NameVariant{Name: resId.Name, Variant: resId.Variant, ResourceType: resId.Type.String()}
+		task, err := serv.taskManager.CreateTask("delete-task", scheduling.ResourceDeletion, taskTarget)
+		if err != nil {
+			return nil, err
+		}
+
+		needsJobList := []common.ResourceType{
+			common.FEATURE_VARIANT,
+			common.LABEL_VARIANT,
+			common.TRAINING_SET_VARIANT,
+			common.SOURCE_VARIANT,
+		}
+		if slices.Contains(needsJobList, resId.Type) {
+			taskId := task.ID
+			logger.Info("Creating Job", resId.String())
+			trigger := scheduling.OnApplyTrigger{TriggerName: "Apply"}
+			taskName := fmt.Sprintf("Deleting Resource %s", resId.String())
+			taskRun, createTaskErr := serv.taskManager.CreateTaskRun(taskName, taskId, trigger)
+			if createTaskErr != nil {
+				logger.Errorw("unable to create task run", "task name", taskName, "task ID", taskId, "trigger", trigger.TriggerName, "error", createTaskErr)
+				return nil, createTaskErr
+			}
+			logger.Infow("Successfully Created Task", "task ID", taskRun.TaskId, "taskrun ID", taskRun.ID, "resource ID", resId.String())
+		}
+		return &pb.MarkForDeletionResponse{}, nil
+	} else {
+		err = serv.lookup.Delete(ctx, notCommonResId)
+		if err != nil {
+			logger.Errorw("Could not delete resource", "error", err.Error())
+			return &pb.MarkForDeletionResponse{}, err
+		}
+	}
+
+	return &pb.MarkForDeletionResponse{}, nil
+}
+
+func (serv *MetadataServer) GetStagedForDeletionResource(ctx context.Context, request *pb.GetStagedForDeletionResourceRequest) (*pb.GetStagedForDeletionResourceResponse, error) {
+	_, ctx, logger := serv.Logger.InitializeRequestID(ctx)
+	logger = logger.WithResource(logging.ResourceType(request.ResourceId.ResourceType), request.ResourceId.Resource.Name, request.ResourceId.Resource.Variant)
+	logger.Infow("Getting staged for deletion resource")
+
+	resId := ResourceID{Name: request.ResourceId.Resource.Name, Variant: request.ResourceId.Resource.Variant, Type: ResourceType(request.ResourceId.ResourceType)}
+
+	resourceLookupOpt := DeleteLookupOption{DeletedOnly}
+	resource, err := serv.lookup.Lookup(ctx, resId, resourceLookupOpt)
+	if err != nil {
+		logger.Errorw("Could not find resource to delete", "error", err.Error())
+		return &pb.GetStagedForDeletionResourceResponse{}, err
+	}
+
+	logger.Debugw("Found resource to delete", "resource", resource)
+	var rv *pb.ResourceVariant
+	switch resId.Type {
+	case FEATURE_VARIANT:
+		featureVariant := resource.(*featureVariantResource)
+		rv = &pb.ResourceVariant{
+			Resource: &pb.ResourceVariant_FeatureVariant{
+				FeatureVariant: featureVariant.serialized,
+			},
+		}
+	case LABEL_VARIANT:
+		labelVariant := resource.(*labelVariantResource)
+		rv = &pb.ResourceVariant{
+			Resource: &pb.ResourceVariant_LabelVariant{
+				LabelVariant: labelVariant.serialized,
+			},
+		}
+	case SOURCE_VARIANT:
+		sourceVariant := resource.(*sourceVariantResource)
+		rv = &pb.ResourceVariant{
+			Resource: &pb.ResourceVariant_SourceVariant{
+				SourceVariant: sourceVariant.serialized,
+			},
+		}
+	case TRAINING_SET_VARIANT:
+		trainingSetVariant := resource.(*trainingSetVariantResource)
+		rv = &pb.ResourceVariant{
+			Resource: &pb.ResourceVariant_TrainingSetVariant{
+				TrainingSetVariant: trainingSetVariant.serialized,
+			},
+		}
+	default:
+		return nil, fferr.NewInternalErrorf("Resource type %s is not deletable", resId.Type)
+	}
+
+	return &pb.GetStagedForDeletionResourceResponse{ResourceVariant: rv}, nil
+}
+
+func (serv *MetadataServer) isDeletable(ctx context.Context, resource Resource) error {
+	// we can only delete snowflake resource variants
+
+	// cast resource to source variant
+	resourcesAllowedForDeletion := []ResourceType{
+		FEATURE_VARIANT,
+		LABEL_VARIANT,
+		SOURCE_VARIANT,
+		TRAINING_SET_VARIANT,
+		PROVIDER,
+	}
+
+	if !slices.Contains(resourcesAllowedForDeletion, resource.ID().Type) {
+		return fferr.NewInternalErrorf("Resource type %s is not deletable", resource.ID().Type)
+	}
+
+	switch r := resource.(type) {
+	case *trainingSetVariantResource:
+		return serv.validateTrainingSetDeletion(ctx, r)
+	case *sourceVariantResource:
+		return serv.validateSourceDeletion(ctx, r)
+	case *featureVariantResource:
+		return serv.validateFeatureDeletion(ctx, r)
+	case *labelVariantResource:
+		return serv.validateLabelDeletion(ctx, r)
+	}
+	return nil
+}
+
+func (serv *MetadataServer) validateProviderType(ctx context.Context, providerName string) error {
+	provider, err := serv.lookup.Lookup(ctx, ResourceID{Name: providerName, Type: PROVIDER})
+	if err != nil {
+		return err
+	}
+
+	providerResource := provider.(*providerResource)
+	t := providerResource.serialized.Type
+	serv.Logger.Debugw("Provider type", "type", t)
+
+	// we can only delete snowflake provider for now
+	if t != pt.SnowflakeOffline.String() {
+		return fferr.NewInternalErrorf("Resource is not deletable because it is not a snowflake provider")
+	}
+	return nil
+}
+
+func (serv *MetadataServer) validateTrainingSetDeletion(ctx context.Context, ts *trainingSetVariantResource) error {
+	wrapped := WrapProtoTrainingSetVariant(ts.serialized)
+	serv.Logger.Debugw("Check provider for deletion", "provider", wrapped.Provider())
+	return serv.validateProviderType(ctx, wrapped.Provider())
+}
+
+func (serv *MetadataServer) validateSourceDeletion(ctx context.Context, sv *sourceVariantResource) error {
+	wrapped := WrapProtoSourceVariant(sv.serialized)
+	serv.Logger.Debugw("Check provider for deletion", "provider", wrapped.Provider())
+
+	if err := serv.validateProviderType(ctx, wrapped.Provider()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (serv *MetadataServer) validateFeatureDeletion(ctx context.Context, fv *featureVariantResource) error {
+	wrapped := WrapProtoFeatureVariant(fv.serialized)
+	serv.Logger.Debugw("Check provider for deletion", "provider", wrapped.Provider())
+	return serv.validateProviderType(ctx, wrapped.Provider())
+}
+
+func (serv *MetadataServer) validateLabelDeletion(ctx context.Context, lv *labelVariantResource) error {
+	wrapped := WrapProtoLabelVariant(lv.serialized)
+	serv.Logger.Debugw("Check provider for deletion", "provider", wrapped.Provider())
+	return serv.validateProviderType(ctx, wrapped.Provider())
+}
+
+func (serv *MetadataServer) FinalizeDeletion(ctx context.Context, request *pb.FinalizeDeletionRequest) (*pb.FinalizeDeletionResponse, error) {
+	_, ctx, logger := serv.Logger.InitializeRequestID(ctx)
+	logger.Infow("Finalizing resource deletion", "resource_id", request.ResourceId)
+	resId := ResourceID{Name: request.ResourceId.Resource.Name, Variant: request.ResourceId.Resource.Variant, Type: ResourceType(request.ResourceId.ResourceType)}
+
+	err := serv.lookup.Delete(ctx, resId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.FinalizeDeletionResponse{}, nil
 }
 
 func (serv *MetadataServer) GetFeatures(stream pb.Metadata_GetFeaturesServer) error {
@@ -2751,7 +3076,6 @@ func (serv *MetadataServer) getEquivalent(ctx context.Context, req *pb.GetEquiva
 
 	if err != nil {
 		logger.Errorw("error extracting resource variant", "resource variant", req, "error", err)
-
 		return nil, err
 	}
 	logger.Debugw("getEquivalent: extracted resource variant")
@@ -2761,10 +3085,19 @@ func (serv *MetadataServer) getEquivalent(ctx context.Context, req *pb.GetEquiva
 		logger.Errorw("Unable to list resources", "error", err)
 		return nil, err
 	}
+
+	if len(resourcesForType) == 0 {
+		logger.Debugw("getEquivalent: no resources found for type", "type", resType)
+		return nil, nil
+	}
 	logger.Debugw("getEquivalent: listed resource variants")
 	filtered, err := serv.filterResources(ctx, resourcesForType, username, filterStatus)
 	if err != nil {
 		return nil, err
+	}
+	if len(filtered) == 0 {
+		logger.Debugw("getEquivalent: no resources found for type after filtering", "type", resType)
+		return nil, nil
 	}
 	logger.Debugw("getEquivalent: filtered resources")
 	equivalentResourceVariant, err := serv.findEquivalent(ctx, filtered, currentResource)
@@ -2940,7 +3273,7 @@ func (serv *MetadataServer) genericCreate(ctx context.Context, res Resource, ini
 		if r, ok := res.(resourceTaskImplementation); ok {
 			taskIDs, err = r.TaskIDs()
 			if err != nil {
-				logger.Errorw("error getting task IDs from ResourceTaskIplementation", "error", err)
+				logger.Errorw("error getting task IDs from ResourceTaskImplementation", "error", err)
 				return nil, err
 			}
 		}
@@ -3161,23 +3494,8 @@ func (serv *MetadataServer) genericGet(ctx context.Context, stream interface{}, 
 		// Can improve on this by linking the request to a specific run but that requires
 		// additional changes
 		if serv.needsJob(resource) {
-			if res, ok := resource.(resourceStatusImplementation); ok {
-				taskID, err := resource.(resourceTaskImplementation).TaskIDs()
-				if err != nil {
-					return err
-				}
-				if len(taskID) >= 0 {
-					// This logic gets the status of the latest task for a resource. Need to create
-					// better logic around this later
-					status, msg, err := serv.fetchStatus(taskID[len(taskID)-1])
-					if err != nil {
-						serv.Logger.Errorw("Failed to set status", "error", err)
-						return err
-					}
-					if err := res.SetAndSaveStatus(ctx, status, msg, serv.lookup); err != nil {
-						return err
-					}
-				}
+			if _, err := serv.getStatusFromTasks(ctx, resource); err != nil {
+				return err
 			}
 		}
 		loggerWithResource.Debug("Sending Resource")
@@ -3188,6 +3506,29 @@ func (serv *MetadataServer) genericGet(ctx context.Context, stream interface{}, 
 		}
 		loggerWithResource.Debug("Send Complete")
 	}
+}
+
+func (serv *MetadataServer) getStatusFromTasks(ctx context.Context, resource Resource) (pb.ResourceStatus_Status, error) {
+	if res, ok := resource.(resourceStatusImplementation); ok {
+		taskID, err := resource.(resourceTaskImplementation).TaskIDs()
+		if err != nil {
+			return pb.ResourceStatus_NO_STATUS, err
+		}
+		if len(taskID) > 0 {
+			// This logic gets the status of the latest task for a resource. Need to create
+			// better logic around this later
+			status, msg, err := serv.fetchStatus(taskID[len(taskID)-1])
+			if err != nil {
+				serv.Logger.Errorw("Failed to set status", "error", err)
+				return pb.ResourceStatus_NO_STATUS, err
+			}
+			if err := res.SetAndSaveStatus(ctx, status, msg, serv.lookup); err != nil {
+				return pb.ResourceStatus_NO_STATUS, err
+			}
+			return status.Proto(), err
+		}
+	}
+	return resource.GetStatus().GetStatus(), nil
 }
 
 func (serv *MetadataServer) genericList(ctx context.Context, t ResourceType, send sendFn) error {

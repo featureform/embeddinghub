@@ -904,7 +904,13 @@ func (client *Client) GetSourceVariants(ctx context.Context, ids []NameVariant) 
 	}
 	go func() {
 		for _, id := range ids {
-			err := stream.Send(&pb.NameVariantRequest{NameVariant: &pb.NameVariant{Name: id.Name, Variant: id.Variant}, RequestId: logging.GetRequestIDFromContext(ctx)})
+			req := &pb.NameVariantRequest{
+				NameVariant: &pb.NameVariant{
+					Name:    id.Name,
+					Variant: id.Variant,
+				},
+				RequestId: logging.GetRequestIDFromContext(ctx)}
+			err := stream.Send(req)
 			if err != nil {
 				logger.Errorw(
 					"Failed to send source variant",
@@ -933,9 +939,15 @@ func (client *Client) GetSourceVariant(ctx context.Context, id NameVariant) (*So
 	variants, err := client.GetSourceVariants(ctx, []NameVariant{id})
 	if err != nil {
 		return nil, err
-
 	}
 	return variants[0], nil
+}
+
+func (client *Client) FinalizeDelete(ctx context.Context, resId ResourceID) error {
+	nameVariant := pb.NameVariant{Name: resId.Name, Variant: resId.Variant}
+	resourceID := pb.ResourceID{Resource: &nameVariant, ResourceType: resId.Type.Serialized()}
+	_, err := client.GrpcConn.FinalizeDeletion(ctx, &pb.FinalizeDeletionRequest{ResourceId: &resourceID})
+	return err
 }
 
 type sourceStream interface {
@@ -1280,6 +1292,67 @@ func (client *Client) GetModels(ctx context.Context, models []string) ([]*Model,
 		}
 	}()
 	return client.parseModelStream(stream)
+}
+
+func (client *Client) GetStagedForDeletionSourceVariant(ctx context.Context, id NameVariant) (*SourceVariant, error) {
+	res, err := client.GetStagedForDeletionResource(ctx, ResourceID{
+		Name:    id.Name,
+		Variant: id.Variant,
+		Type:    SOURCE_VARIANT,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return WrapProtoSourceVariant(res.GetSourceVariant()), nil
+}
+
+func (client *Client) GetStagedForDeletionTrainingSetVariant(ctx context.Context, id NameVariant) (*TrainingSetVariant, error) {
+	res, err := client.GetStagedForDeletionResource(ctx, ResourceID{
+		Name:    id.Name,
+		Variant: id.Variant,
+		Type:    TRAINING_SET_VARIANT,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return WrapProtoTrainingSetVariant(res.GetTrainingSetVariant()), nil
+}
+
+func (client *Client) GetStagedForDeletionFeatureVariant(ctx context.Context, id NameVariant) (*FeatureVariant, error) {
+	res, err := client.GetStagedForDeletionResource(ctx, ResourceID{
+		Name:    id.Name,
+		Variant: id.Variant,
+		Type:    FEATURE_VARIANT,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return WrapProtoFeatureVariant(res.GetFeatureVariant()), nil
+}
+
+func (client *Client) GetStagedForDeletionLabelVariant(ctx context.Context, id NameVariant) (*LabelVariant, error) {
+	res, err := client.GetStagedForDeletionResource(ctx, ResourceID{
+		Name:    id.Name,
+		Variant: id.Variant,
+		Type:    LABEL_VARIANT,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return WrapProtoLabelVariant(res.GetLabelVariant()), nil
+}
+
+func (client *Client) GetStagedForDeletionResource(ctx context.Context, id ResourceID) (*pb.ResourceVariant, error) {
+	client.Logger.Debugw("Getting staged for deletion resource", "id", id)
+	nameVariant := pb.NameVariant{Name: id.Name, Variant: id.Variant}
+	resourceID := pb.ResourceID{Resource: &nameVariant, ResourceType: id.Type.Serialized()}
+
+	resp, err := client.GrpcConn.GetStagedForDeletionResource(ctx, &pb.GetStagedForDeletionResourceRequest{ResourceId: &resourceID})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.ResourceVariant, err
 }
 
 type ModelDef struct {
@@ -2890,7 +2963,8 @@ func (variant *SourceVariant) GetTransformationLocation() (pl.Location, error) {
 	switch pt := variant.serialized.GetTransformation().GetLocation().(type) {
 	case *pb.Transformation_Table:
 		table := pt.Table.GetName()
-		return pl.NewSQLLocation(table), nil
+		return pl.NewSQLLocationWithDBSchemaTable(pt.Table.GetDatabase(), pt.Table.GetSchema(), table), nil
+		//return pl.NewSQLLocation(table), nil
 	case *pb.Transformation_Filestore:
 		fp := filestore.FilePath{}
 		if err := fp.ParseDirPath(pt.Filestore.GetPath()); err != nil {

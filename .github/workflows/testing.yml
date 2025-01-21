@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  POSTGRES_USER: "username"
-  POSTGRES_DB: "default"
+  POSTGRES_USER: "postgres"
+  POSTGRES_DB: "postgres"
   POSTGRES_PASSWORD: "password"
   CLICKHOUSE_USER: "default"
   CLICKHOUSE_HOST: "localhost"
@@ -64,9 +64,14 @@ jobs:
         ports:
           - 5432:5432
         env:
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_DB: ${{ env.POSTGRES_DB }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
 
       clickhouse:
         image: clickhouse/clickhouse-server
@@ -77,6 +82,14 @@ jobs:
           CLICKHOUSE_DB: ${{ env.CLICKHOUSE_DB }}
           CLICKHOUSE_PASSWORD: ${{ env.CLICKHOUSE_PASSWORD }}
     steps:
+
+      - name: Debug Postgres Connection
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          echo "🔍 Testing Postgres connection on localhost..."
+          PGPASSWORD=password psql -h localhost -U postgres -d postgres -c '\dt'
+          
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -140,6 +153,14 @@ jobs:
 
       - name: Setup Proto
         run: ./gen_grpc.sh
+
+      - name: Install Dependencies
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Apply Database Migrations
+        run: |
+          goose -dir db/migrations postgres "host=localhost user=${{ env.POSTGRES_USER }} password=${{ env.POSTGRES_PASSWORD }} dbname=${{ env.POSTGRES_DB }} sslmode=disable" up
 
       - name: Unit Tests
         run: go test ./... -short

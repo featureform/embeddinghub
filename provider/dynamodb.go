@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 	"math"
 	"reflect"
 	"strconv"
@@ -351,8 +352,14 @@ func (store *dynamodbOnlineStore) DeleteTable(feature, variant string) error {
 	}
 	_, err := store.client.DeleteTable(context.TODO(), params)
 	if err != nil {
-		return fferr.NewExecutionError(pt.DynamoDBOnline.String(), err)
+		var notFoundErr *types.ResourceNotFoundException
+		if errors.As(err, &notFoundErr) {
+			return fferr.NewDatasetNotFoundError(feature, variant, err)
+		} else {
+			return fferr.NewExecutionError(pt.DynamoDBOnline.String(), err)
+		}
 	}
+
 	return nil
 }
 
@@ -362,6 +369,10 @@ func (store *dynamodbOnlineStore) CheckHealth() (bool, error) {
 		return false, fferr.NewExecutionError(pt.DynamoDBOnline.String(), err)
 	}
 	return true, nil
+}
+
+func (store dynamodbOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 // TODO(simba) Make this work with Serialize V1

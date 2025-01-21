@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	pl "github.com/featureform/provider/location"
 	"strconv"
 	"time"
 
@@ -198,7 +199,6 @@ func (store *redisOnlineStore) CreateTable(feature, variant string, valueType ty
 	return table, nil
 }
 
-// TODO: Implement table deletion
 func (store *redisOnlineStore) DeleteTable(feature, variant string) error {
 	return nil
 }
@@ -217,6 +217,10 @@ func (store *redisOnlineStore) CheckHealth() (bool, error) {
 		return false, wrapped
 	}
 	return true, nil
+}
+
+func (store redisOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 func (store *redisOnlineStore) CreateIndex(feature, variant string, vectorType types.VectorType) (VectorStoreTable, error) {

@@ -474,7 +474,7 @@ func Test_wrapTaskRunMetadataProto(t *testing.T) {
 				t.Errorf("WrapTaskRunMetadataProto() error = %#v, wantErr %#v", err, tt.wantErr)
 				return
 			}
-			got, err := WrapProtoTaskRunMetadata(proto)
+			got, err := TaskRunMetadataFromProto(proto)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wrapProtoTaskRunMetadata() error = %#v, wantErr %#v", err, tt.wantErr)
 				return

@@ -585,6 +585,7 @@ func startServNoPanic(t *testing.T) (*MetadataServer, string) {
 		Logger:      logging.WrapZapLogger(logger.Sugar()),
 		TaskManager: manager,
 	}
+
 	serv, err := NewMetadataServer(config)
 	if err != nil {
 		panic(err)
@@ -2384,6 +2385,44 @@ func TestSourceShallowMapOK(t *testing.T) {
 		})
 	}
 }
+
+func Test_APIs(t *testing.T) {
+	serv, _ := startServNoPanic(t)
+
+	labelVariant := &pb.ResourceVariant_SourceVariant{
+		SourceVariant: &pb.SourceVariant{
+			Name:    "label_transactionz",
+			Variant: "2025-01-09t12-06-09",
+		},
+	}
+	r := &pb.GetEquivalentRequest{
+		RequestId: "1",
+		Variant: &pb.ResourceVariant{
+			Resource: labelVariant,
+		},
+	}
+
+	eq, _ := serv.getEquivalent(context.Background(), r, false, "")
+	println(eq)
+
+}
+
+//func Test_Delete(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("Integration Test")
+//	}
+//	serv, _ := startServNoPanic(t)
+//
+//	resourceId := common.ResourceID{
+//		Name:    "label_transactionz",
+//		Variant: "2025-01-09t11-41-25",
+//		Type:    common.SOURCE_VARIANT,
+//	}
+//
+//	ctx := logging.AttachRequestID(logging.NewRequestID().String(), context.Background(), logging.NewLoggerWithLevel("metadata-test", logging.DebugLevel))
+//	_, err := serv.MarkForDeletion(ctx, &pb.MarkForDeletionRequest{ResourceId: resourceId.Proto()})
+//	assert.NoError(t, err)
+//}
 
 func Test_GetEquivalent(t *testing.T) {
 	serv, addr := startServNoPanic(t)

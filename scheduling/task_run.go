@@ -205,6 +205,7 @@ type TaskRunMetadata struct {
 	Error          string          `json:"error"`
 	Dag            TaskDAG         `json:"dag"`
 	LastSuccessful TaskRunID       `json:"lastSuccessful"`
+	IsDelete       bool            `json:"isDelete"`
 	ResumeID       ptypes.ResumeID `json:"resumeID"`
 	ErrorProto     *pb.ErrorStatus
 }
@@ -234,6 +235,7 @@ func (t *TaskRunMetadata) Unmarshal(data []byte) error {
 		ResumeID       string          `json:"resumeID"`
 		ErrorProto     *pb.ErrorStatus
 		LastSuccessful uint64 `json:"lastSuccessful"`
+		IsDelete       bool   `json:"isDelete"`
 	}
 
 	var temp tempConfig
@@ -270,6 +272,7 @@ func (t *TaskRunMetadata) Unmarshal(data []byte) error {
 	t.EndTime = temp.EndTime
 	t.Logs = temp.Logs
 	t.Error = temp.Error
+	t.IsDelete = temp.IsDelete
 
 	triggerMap := make(map[string]interface{})
 	if err := json.Unmarshal(temp.Trigger, &triggerMap); err != nil {
@@ -349,6 +352,7 @@ func (run *TaskRunMetadata) ToProto() (*sch.TaskRunMetadata, error) {
 		},
 		ResumeID:       &sch.ResumeID{Id: run.ResumeID.String()},
 		LastSuccessful: lsid,
+		IsDelete:       run.IsDelete,
 	}
 
 	taskRunMetadata, err := setTriggerProto(taskRunMetadata, run.Trigger)
@@ -434,7 +438,7 @@ func getScheduleTrigger(trigger ScheduleTrigger) *sch.TaskRunMetadata_Schedule {
 	}
 }
 
-func WrapProtoTaskRunMetadata(run *sch.TaskRunMetadata) (TaskRunMetadata, error) {
+func TaskRunMetadataFromProto(run *sch.TaskRunMetadata) (TaskRunMetadata, error) {
 	rid, err := ParseTaskRunID(run.RunID.Id)
 	if err != nil {
 		return TaskRunMetadata{}, err
@@ -477,6 +481,7 @@ func WrapProtoTaskRunMetadata(run *sch.TaskRunMetadata) (TaskRunMetadata, error)
 		ErrorProto:     run.Status.ErrorStatus,
 		ResumeID:       ptypes.ResumeID(run.GetResumeID().GetId()),
 		LastSuccessful: lsid,
+		IsDelete:       run.IsDelete,
 	}, nil
 }
 

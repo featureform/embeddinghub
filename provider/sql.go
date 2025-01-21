@@ -31,6 +31,8 @@ import (
 	db "github.com/jackc/pgx/v4"
 )
 
+var sqlLogger = logging.NewLogger("sql")
+
 func sanitize(ident string) string {
 	return db.Identifier{ident}.Sanitize()
 }
@@ -258,6 +260,10 @@ func (store *sqlOfflineStore) CheckHealth() (bool, error) {
 		return false, wrapped
 	}
 	return true, nil
+}
+
+func (store sqlOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 func (store *sqlOfflineStore) RegisterResourceFromSourceTable(id ResourceID, schema ResourceSchema, opts ...ResourceOption) (OfflineTable, error) {

@@ -521,6 +521,10 @@ func (store *SparkOfflineStore) CheckHealth() (bool, error) {
 	return true, nil
 }
 
+func (sf SparkOfflineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
+}
+
 func (store *SparkOfflineStore) getHealthCheckCSVBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	w := csv.NewWriter(buf)

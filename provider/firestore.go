@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/featureform/fferr"
 	"github.com/featureform/logging"
+	pl "github.com/featureform/provider/location"
 	pc "github.com/featureform/provider/provider_config"
 	pt "github.com/featureform/provider/provider_type"
 	se "github.com/featureform/provider/serialization"
@@ -352,6 +353,10 @@ func (store *firestoreOnlineStore) CheckHealth() (bool, error) {
 	}
 	store.logger.Info("Health check successful")
 	return true, nil
+}
+
+func (store *firestoreOnlineStore) Delete(location pl.Location) error {
+	return fferr.NewInternalErrorf("delete not implemented")
 }
 
 func (table firestoreOnlineTable) Set(entity string, value interface{}) error {

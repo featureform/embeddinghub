@@ -6,7 +6,7 @@
 #
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from featureform.proto import metadata_pb2 as pb
 from typeguard import typechecked
 from os import path
@@ -236,6 +236,26 @@ class ResourceType(Enum):
     SCHEDULE = 9
     MODEL = 10
     TRANSFORMATION = 11
+
+    @classmethod
+    def _get_proto_map(cls):
+        return {
+            cls.NO_TYPE: None,
+            cls.USER: pb.ResourceType.USER,
+            cls.PROVIDER: pb.ResourceType.PROVIDER,
+            cls.SOURCE_VARIANT: pb.ResourceType.SOURCE_VARIANT,
+            cls.ENTITY: pb.ResourceType.ENTITY,
+            cls.FEATURE_VARIANT: pb.ResourceType.FEATURE_VARIANT,
+            cls.ONDEMAND_FEATURE: pb.ResourceType.FEATURE_VARIANT,
+            cls.LABEL_VARIANT: pb.ResourceType.LABEL_VARIANT,
+            cls.TRAININGSET_VARIANT: pb.ResourceType.TRAINING_SET_VARIANT,
+            cls.SCHEDULE: None,
+            cls.MODEL: pb.ResourceType.MODEL,
+            cls.TRANSFORMATION: pb.ResourceType.SOURCE_VARIANT,
+        }
+
+    def to_proto(self):
+        return self._get_proto_map()[self]
 
     def to_string(self) -> str:
         return self.name.replace("_", " ").title()

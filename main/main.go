@@ -83,7 +83,6 @@ func main() {
 	/******************************************** Metadata ************************************************************/
 
 	mLogger := logging.NewLogger("metadata")
-
 	config := &metadata.Config{
 		Logger:      mLogger,
 		Address:     fmt.Sprintf(":%s", metadataPort),

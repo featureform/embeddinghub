@@ -14,7 +14,7 @@ concurrency:
 
 env:
   POSTGRES_USER: "username"
-  POSTGRES_DB: "default"
+  POSTGRES_DB: "postgres"
   POSTGRES_PASSWORD: "password"
   CLICKHOUSE_USER: "default"
   CLICKHOUSE_HOST: "localhost"
@@ -140,6 +140,14 @@ jobs:
 
       - name: Setup Proto
         run: ./gen_grpc.sh
+
+      - name: Install Dependencies
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@v3.18.0
+
+      - name: Apply Database Migrations
+        run: |
+          goose -dir db/migrations postgres "host=localhost user=${{ env.POSTGRES_USER }} password=${{ env.POSTGRES_PASSWORD }} dbname=${{ env.POSTGRES_DB }} sslmode=disable" up
 
       - name: Unit Tests
         run: go test ./... -short

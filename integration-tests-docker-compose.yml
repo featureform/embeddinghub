@@ -1,0 +1,41 @@
+version: '3.9'
+
+services:
+  redis-insecure:
+    image: redis
+    ports:
+      - "6379:6379"
+
+  redisearch:
+    image: redis/redis-stack
+    ports:
+      - "6380:6379"
+
+  redis-custom:
+    image: redis
+    command: redis-server --requirepass password
+    ports:
+      - "6378:6379"
+
+  cassandra:
+    image: cassandra
+    ports:
+      - "9042:9042"
+
+  postgres:
+    image: featureformcom/postgres
+    ports:
+      - "5432:5432"
+
+  etcd:
+    image: bitnami/etcd
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+
+  meilisearch:
+    image: getmeili/meilisearch
+    ports:
+      - "7700:7700"

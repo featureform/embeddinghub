@@ -399,6 +399,12 @@ test_go_unit:
 	-mkdir coverage
 	go test ./... -tags=*,offline,provider --short   -coverprofile coverage/cover.out.tmp
 
+test_go_integration:
+	-mkdir coverage
+	docker-compose -f integration-tests-docker-compose.yml up -d
+	go test ./... -tags=online, provider, filestore, spark, filepath, health, importable_online -coverprofile coverage/cover.out.tmp
+	docker-compose -f integration-tests-docker-compose.yml down
+
 test_metadata:							## Requires ETCD to be installed and added to path
 	-mkdir coverage
 	$(flags) etcd &

@@ -1,6 +1,6 @@
 boto3
 dill==0.3.7
-pyspark==3.3.0
+pyspark==3.3.2
 pytest==7.1.2
 pytest-cov==3.0.0
 python-dotenv==0.20.0

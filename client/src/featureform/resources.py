@@ -3463,7 +3463,6 @@ def _get_and_set_equivalent_variant(
             return variant_value
     return None
 
-
 @typechecked
 @dataclass
 class TrainingSetFeatures:

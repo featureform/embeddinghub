@@ -882,6 +882,9 @@ class SubscriptableTransformation:
     def name_variant(self):
         return self.transformation.name_variant()
 
+    def get_resource_type(self):
+        return self.transformation.get_resource_type()
+
     def __getitem__(self, columns: List[str]):
         col_len = len(columns)
         if col_len < 2:
@@ -1014,6 +1017,9 @@ class SQLTransformationDecorator:
 
     def name_variant(self):
         return (self.name, self.variant)
+
+    def get_resource_type(self):
+        return ResourceType.SOURCE_VARIANT
 
     def register_resources(
         self,
@@ -4876,6 +4882,92 @@ class ResourceClient:
                 set_run("")
             clear_state()
 
+    def delete(
+        self,
+        source: Union[SourceRegistrar, SubscriptableTransformation, str],
+        variant: Optional[str] = None,
+        resource_type: Optional[ResourceType] = None,
+    ):
+        """
+        Delete a resource by name and variant or by resource object.
+
+        ```python
+        import featureform as ff
+        client = ff.Client()
+
+        client.delete("transactions", "kaggle", ff.ResourceType.SOURCE)
+        ```
+
+        Args:
+            source (Union[SourceRegistrar, SubscriptableTransformation, str]):
+                The resource object or name of resource to be deleted.
+            variant (str, optional): Variant of resource to be deleted. Required if source is a string.
+            resource_type (ResourceType, optional): Type of resource to be deleted. Required if source is a string.
+        """
+        # Prepare the request based on the input type
+        request = self._create_delete_request(source, variant, resource_type)
+
+        # Send the request to delete the resource
+        self._stub.MarkForDeletion(request)
+        print("Deleting resource async")
+
+    def _create_delete_request(
+        self,
+        source: Union[SourceRegistrar, SubscriptableTransformation, str],
+        variant: Optional[str] = None,
+        resource_type: Optional[ResourceType] = None,
+    ) -> metadata_pb2.MarkForDeletionRequest:
+        """
+        Creates the delete request based on the source input.
+        """
+        if isinstance(source, str):
+            # Validate string inputs
+            if variant is None or variant == "":
+                raise ValueError(
+                    "variant must be specified and cannot be empty if source is a string"
+                )
+            if resource_type is None:
+                raise ValueError(
+                    "resource_type must be specified if source is a string"
+                )
+
+            # Create request using name, variant, and resource type
+            return metadata_pb2.MarkForDeletionRequest(
+                resource_id=metadata_pb2.ResourceID(
+                    resource=metadata_pb2.NameVariant(name=source, variant=variant),
+                    resource_type=resource_type.to_proto(),
+                )
+            )
+        else:
+            # Validate resource object type
+            if not isinstance(
+                source,
+                (
+                    FeatureColumnResource,
+                    SubscriptableTransformation,
+                    LabelColumnResource,
+                    TrainingSetVariant,
+                    ColumnSourceRegistrar,
+                ),
+            ):
+                raise ValueError(
+                    "Resource must be a FeatureColumnResource, LabelColumnResource, "
+                    "TrainingSetVariant, or ColumnSourceRegistrar but received: ",
+                    type(source),
+                )
+
+            # Extract name, variant, and resource type
+            name, variant = source.name_variant()
+            res_type = source.get_resource_type()
+
+            # Create request using resource object
+            return metadata_pb2.MarkForDeletionRequest(
+                resource_id=metadata_pb2.ResourceID(
+                    resource=metadata_pb2.NameVariant(name=name, variant=variant),
+                    resource_type=res_type.to_proto(),
+                )
+            )
+
     def run(self):
         """
         Run tasks for all definitions, creating and retrieving all specified resources.
@@ -5231,6 +5323,7 @@ class ResourceClient:
                 LabelColumnResource,
                 TrainingSetVariant,
                 ColumnSourceRegistrar,
+                SubscriptableTransformation,
             ),
         ):
             res_name = resource_name.name_variant()[0]

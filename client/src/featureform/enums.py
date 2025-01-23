@@ -224,18 +224,21 @@ class DataResourceType(Enum):
 
 
 class ResourceType(Enum):
-    NO_TYPE = 0
-    USER = 1
-    PROVIDER = 2
-    SOURCE_VARIANT = 3
-    ENTITY = 4
-    FEATURE_VARIANT = 5
-    ONDEMAND_FEATURE = 6
-    LABEL_VARIANT = 7
-    TRAININGSET_VARIANT = 8
-    SCHEDULE = 9
-    MODEL = 10
-    TRANSFORMATION = 11
+    NO_TYPE = None
+    USER = pb.ResourceType.USER
+    PROVIDER = pb.ResourceType.PROVIDER
+    SOURCE_VARIANT = pb.ResourceType.SOURCE_VARIANT
+    ENTITY = pb.ResourceType.ENTITY
+    FEATURE_VARIANT = pb.ResourceType.FEATURE_VARIANT
+    ONDEMAND_FEATURE = pb.ResourceType.FEATURE_VARIANT
+    LABEL_VARIANT = pb.ResourceType.LABEL_VARIANT
+    TRAININGSET_VARIANT = pb.ResourceType.TRAINING_SET_VARIANT
+    SCHEDULE = None
+    MODEL = pb.ResourceType.MODEL
+    TRANSFORMATION = pb.ResourceType.SOURCE_VARIANT
+
+    def to_proto(self):
+        return self.value
 
     def to_string(self) -> str:
         return self.name.replace("_", " ").title()

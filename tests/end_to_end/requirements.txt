@@ -11,7 +11,7 @@ dataclasses==0.6
 docker==6.1.3
 dill==0.3.7
 Flask==2.2.5
-Flask-Cors==4.0.1
+Flask-Cors==5.0.0
 google-cloud-storage
 grpcio==1.57.0
 numpy==1.24.4

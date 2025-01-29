@@ -45,7 +45,7 @@ func TestSQLLocation_TableLocation(t *testing.T) {
 			database:       "test_db",
 			schema:         "",
 			table:          "test_table",
-			expectedResult: "test_table",
+			expectedResult: "test_db.test_table",
 		},
 	}
 

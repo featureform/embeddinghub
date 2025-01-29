@@ -394,11 +394,17 @@ func (sf snowflakeOfflineStore) buildTrainingSetQuery(def TrainingSetDef) (strin
 		return "", err
 	}
 	sf.logger.Debugw("Training set builder params", "params", params)
-	ts := tsq.NewTrainingSet(params)
+
+	queryConfig := tsq.QueryConfig{
+		UseAsOfJoin: true,
+		QuoteChar:   "\"",
+		QuoteTable:  false,
+	}
+	ts := tsq.NewTrainingSet(queryConfig, params)
 	return ts.CompileSQL()
 }
 
-// **NOTE:** As the name suggests, this method is adapts the TrainingSetDef to the BuilderParams to avoid
+// **NOTE:** As the name suggests, this method adapts the TrainingSetDef to the BuilderParams to avoid
 // using TrainingSetDef directly in the tsquery package, which would create a circular dependency. In the future,
 // we should move TrainingSetDef to the provider/types package to avoid this issue.
 func (sf snowflakeOfflineStore) adaptTsDefToBuilderParams(def TrainingSetDef) (tsq.BuilderParams, error) {

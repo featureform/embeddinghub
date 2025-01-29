@@ -12,8 +12,10 @@ import (
 )
 
 type offlineSqlTest struct {
-	storeTester      offlineSqlStoreTester
-	testCrossDbJoins bool
+	storeTester         offlineSqlStoreTester
+	testCrossDbJoins    bool
+	useSchema           bool
+	transformationQuery string
 }
 
 type offlineSqlStoreCoreTester interface {

@@ -36,7 +36,11 @@ func (m *memoryStorageImplementation) Set(key string, value string) error {
 	return nil
 }
 
-func (m *memoryStorageImplementation) Get(key string, opts ...query.Query) (string, error) {
+func (m *memoryStorageImplementation) Get(key string) (string, error) {
+	return m.GetWithOpts(key)
+}
+
+func (m *memoryStorageImplementation) GetWithOpts(key string, opts ...query.Query) (string, error) {
 	if key == "" {
 		return "", fferr.NewInvalidArgumentError(fmt.Errorf("key is empty"))
 	}

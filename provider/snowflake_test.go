@@ -1088,7 +1088,9 @@ func DeleteNotExistingTableTest(t *testing.T, tester offlineSqlTest) {
 	if err := tester.storeTester.CreateDatabase(dbName); err != nil {
 		t.Fatalf("could not create database: %v", err)
 	}
+
 	loc := location.NewFullyQualifiedSQLLocation(dbName, "PUBLIC", "NOT_EXISTING_TABLE").(*location.SQLLocation)
+
 	deleteErr := tester.storeTester.Delete(loc)
 	if deleteErr == nil {
 		t.Fatalf("expected error deleting table")

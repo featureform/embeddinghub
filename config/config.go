@@ -64,6 +64,14 @@ func ShouldUseDBFS() bool {
 	return helpers.GetEnvBool("SHOULD_USE_DBFS", false)
 }
 
+func ShouldRunGooseMigrationMetadata() bool {
+	return helpers.GetEnvBool("RUN_GOOSE_MIGRATION_METADATA", false)
+}
+
+func ShouldRunGooseMigrationExecutable() bool {
+	return helpers.GetEnvBool("RUN_GOOSE_MIGRATION_EXECUTABLE", true)
+}
+
 func CreateSparkScriptConfig() (SparkFileConfigs, error) {
 	remoteScriptPath, err := createSparkRemoteScriptPath()
 	if err != nil {

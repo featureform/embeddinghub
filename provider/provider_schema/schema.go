@@ -78,6 +78,8 @@ func ResourceToCatalogTableName(resourceType, name, variant string) (string, err
 		return fmt.Sprintf("primary__%s__%s", name, variant), nil
 	case Transformation:
 		return fmt.Sprintf("transformation__%s__%s", name, variant), nil
+	case Feature:
+		return fmt.Sprintf("feature__%s__%s", name, variant), nil
 	default:
 		return "", fferr.NewInvalidArgumentErrorf("invalid resource type: %s", resourceType)
 	}

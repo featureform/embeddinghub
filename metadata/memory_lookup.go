@@ -90,7 +90,9 @@ func (lookup MemoryResourceLookup) Lookup(ctx context.Context, id ResourceID, op
 	}
 	qOpts := options.generateQueryOpts()
 	logger.Debugw("Query options", "options", qOpts, "key", key, "id", id)
+	logger.Info("Performing lookup on DB")
 	resp, err := lookup.Connection.Get(key, qOpts...)
+
 	if err != nil || len(resp) == 0 {
 		logger.Debug("Key not found")
 		return nil, fferr.NewKeyNotFoundError(key, err)

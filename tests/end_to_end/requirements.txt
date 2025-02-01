@@ -26,5 +26,5 @@ rich==13.5.2
 six==1.16.0
 SQLAlchemy
 typeguard==2.13.3
-typing_extensions==4.10.0
+typing_extensions>=4.10.0
 snowflake-connector-python

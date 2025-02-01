@@ -45,14 +45,14 @@ func NewPSQLStorageImplementation(ctx context.Context, db *postgres.Pool, tableN
 	}
 
 	return &PSQLStorageImplementation{
-		db:        db,
+		Db:        db,
 		tableName: tableName,
 		logger:    logger,
 	}, nil
 }
 
 type PSQLStorageImplementation struct {
-	db        *postgres.Pool
+	Db        *postgres.Pool
 	tableName string
 	logger    logging.Logger // TODO remove and pass in ctx
 }
@@ -64,7 +64,7 @@ func (psql *PSQLStorageImplementation) Set(key string, value string) error {
 
 	insertSQL := psql.setQuery()
 	psql.logger.Debugw("Setting key with query", "query", insertSQL, "key", key, "value", value)
-	_, err := psql.db.Exec(context.Background(), insertSQL, key, value)
+	_, err := psql.Db.Exec(context.Background(), insertSQL, key, value)
 	if err != nil {
 		return fferr.NewInternalErrorf("failed to set key %s: %w", key, err)
 	}
@@ -72,7 +72,7 @@ func (psql *PSQLStorageImplementation) Set(key string, value string) error {
 	return nil
 }
 
-func (psql *PSQLStorageImplementation) Get(key string, opts ...query.Query) (string, error) {
+func (psql *PSQLStorageImplementation) GetWithOpts(key string, opts ...query.Query) (string, error) {
 	if key == "" {
 		psql.logger.Errorw("Cannot get an empty key")
 		return "", fferr.NewInvalidArgumentErrorf("cannot get an empty key")
@@ -100,7 +100,7 @@ func (psql *PSQLStorageImplementation) Get(key string, opts ...query.Query) (str
 		logger.Errorw("Failed to compile get query", "error", err)
 		return "", err
 	}
-	row := psql.db.QueryRow(context.Background(), qryStr, args...)
+	row := psql.Db.QueryRow(context.Background(), qryStr, args...)
 
 	var value string
 	if err := row.Scan(&value); err != nil {
@@ -109,6 +109,10 @@ func (psql *PSQLStorageImplementation) Get(key string, opts ...query.Query) (str
 	}
 
 	return value, nil
+}
+
+func (psql *PSQLStorageImplementation) Get(key string) (string, error) {
+	return psql.GetWithOpts(key)
 }
 
 func (psql *PSQLStorageImplementation) List(prefix string, opts ...query.Query) (map[string]string, error) {
@@ -127,7 +131,7 @@ func (psql *PSQLStorageImplementation) List(prefix string, opts ...query.Query) 
 		logger.Errorw("Failed to compile list query", "error", err)
 		return nil, err
 	}
-	rows, err := psql.db.Query(context.TODO(), qryStr, args...)
+	rows, err := psql.Db.Query(context.TODO(), qryStr, args...)
 	if err != nil {
 		logger.Errorw("List failed", "error", err)
 		return nil, fferr.NewInternalErrorf("failed to list keys with prefix %s: %v", prefix, err)
@@ -159,7 +163,7 @@ func (psql *PSQLStorageImplementation) Count(prefix string, opts ...query.Query)
 		psql.logger.Errorw("Failed to compile count query", "error", err)
 		return 0, err
 	}
-	row := psql.db.QueryRow(context.TODO(), qryStr, args...)
+	row := psql.Db.QueryRow(context.TODO(), qryStr, args...)
 	var cnt int
 	if err := row.Scan(&cnt); err != nil {
 		return 0, err
@@ -180,7 +184,7 @@ func (psql *PSQLStorageImplementation) ListColumn(prefix string, columns []query
 		psql.logger.Errorw("Failed to compile list query", "error", err)
 		return nil, err
 	}
-	rows, err := psql.db.Query(context.TODO(), qryStr, args...)
+	rows, err := psql.Db.Query(context.TODO(), qryStr, args...)
 	if err != nil {
 		psql.logger.Errorw("List failed", "error", err)
 		return nil, fferr.NewInternalErrorf("failed to list rows with prefix %s: %w", prefix, err)
@@ -232,7 +236,7 @@ func (psql *PSQLStorageImplementation) Delete(key string) (string, error) {
 	}
 
 	deleteSQL := psql.deleteQuery()
-	row := psql.db.QueryRow(context.Background(), deleteSQL, key)
+	row := psql.Db.QueryRow(context.Background(), deleteSQL, key)
 
 	var value string
 	err := row.Scan(&value)
@@ -246,7 +250,7 @@ func (psql *PSQLStorageImplementation) Delete(key string) (string, error) {
 }
 
 func (psql *PSQLStorageImplementation) Pool() *postgres.Pool {
-	return psql.db
+	return psql.Db
 }
 
 func (psql *PSQLStorageImplementation) Close() {

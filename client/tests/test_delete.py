@@ -24,7 +24,7 @@ class TestDelete:
     @pytest.fixture
     def client(self):
         """Fixture to provide a fresh client instance with a mocked stub."""
-        client = Client()
+        client = Client(host="localhost:7878", insecure=True, dry_run=True)
         client._stub = Mock()
         return client
 

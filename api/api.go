@@ -19,32 +19,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/featureform/fferr"
-	"github.com/featureform/helpers"
-	"github.com/featureform/logging"
-	"google.golang.org/protobuf/proto"
-
-	pt "github.com/featureform/provider/provider_type"
-
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-
 	"google.golang.org/grpc/reflection"
 	grpc_status "google.golang.org/grpc/status"
 
-	"google.golang.org/grpc/credentials/insecure"
-
-	health "github.com/featureform/health"
+	"github.com/featureform/fferr"
+	"github.com/featureform/health"
+	"github.com/featureform/helpers"
 	help "github.com/featureform/helpers"
+	"github.com/featureform/logging"
 	"github.com/featureform/metadata"
 	pb "github.com/featureform/metadata/proto"
 	srv "github.com/featureform/proto"
 	"github.com/featureform/provider"
-	"google.golang.org/grpc"
+	pt "github.com/featureform/provider/provider_type"
 )
 
 type ApiServer struct {
@@ -869,12 +863,6 @@ func (serv *MetadataServer) ListEntities(listRequest *pb.ListRequest, stream pb.
 			return sendErr
 		}
 	}
-}
-
-func CensorProviderConfig(provider *pb.Provider) *pb.Provider {
-	censoredProvider := proto.Clone(provider).(*pb.Provider)
-	censoredProvider.SerializedConfig = []byte{}
-	return censoredProvider
 }
 
 func (serv *MetadataServer) ListProviders(listRequest *pb.ListRequest, stream pb.Api_ListProvidersServer) error {

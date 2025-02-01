@@ -6,41 +6,37 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/featureform/fferr"
-	"github.com/featureform/helpers"
+	help "github.com/featureform/helpers"
 	"github.com/featureform/helpers/postgres"
 	"github.com/featureform/logging"
 	pb "github.com/featureform/metadata/proto"
 	pc "github.com/featureform/provider/provider_config"
 	pt "github.com/featureform/provider/provider_type"
 	"github.com/featureform/scheduling"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func NewMetadataPSQLConfigForTesting() postgres.Config {
-	config := postgres.Config{
-		Host:     helpers.GetEnv("POSTGRES_HOST", "localhost"),
-		User:     helpers.GetEnv("POSTGRES_USER", "postgres"),
-		Password: helpers.GetEnv("POSTGRES_PASSWORD", "password"),
-		Port:     helpers.GetEnv("POSTGRES_PORT", "5432"),
-		DBName:   helpers.GetEnv("POSTGRES_DB", "postgres"),
-		SSLMode:  helpers.GetEnv("POSTGRES_SSL_MODE", "disable"),
+func startServPsql(t *testing.T) (*MetadataServer, string, func()) {
+	testDb, dbCleanup := createTestDatabase(t)
+	psqlConfig := postgres.Config{
+		Host:     help.GetEnv("POSTGRES_HOST", "localhost"),
+		Port:     help.GetEnv("POSTGRES_PORT", "5432"),
+		User:     help.GetEnv("POSTGRES_USER", "postgres"),
+		Password: help.GetEnv("POSTGRES_PASSWORD", "password"),
+		DBName:   testDb,
+		SSLMode:  help.GetEnv("POSTGRES_SSL_MODE", "disable"),
 	}
-	return config
-}
+	ctx := logging.NewTestContext(t)
+	pool, err := postgres.NewPool(ctx, psqlConfig)
 
-func startServPsql(t *testing.T, ctx context.Context, logger logging.Logger) (*MetadataServer, string) {
-	metadataPsqlConfig := NewMetadataPSQLConfigForTesting()
-	pool, err := postgres.NewPool(ctx, metadataPsqlConfig)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
 	manager, err := scheduling.NewPSQLTaskMetadataManager(ctx, pool)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+	logger := logging.NewTestLogger(t)
 
 	config := &Config{
 		Logger:      logger,
@@ -60,7 +56,7 @@ func startServPsql(t *testing.T, ctx context.Context, logger logging.Logger) (*M
 			panic(err)
 		}
 	}()
-	return serv, lis.Addr().String()
+	return serv, lis.Addr().String(), dbCleanup
 }
 
 func TestMetadataDelete(t *testing.T) {
@@ -171,14 +167,15 @@ func TestMetadataDelete(t *testing.T) {
 		},
 	}
 
-	ctx, logger := logging.NewTestContextAndLogger(t)
-	serv, addr := startServPsql(t, ctx, logger)
-	cli := client(t, ctx, logger, addr)
-	err := cli.CreateAll(ctx, resources)
+	testServer := newTestMetadataServer(t)
+	defer testServer.Close()
+	defer testServer.dbCleanup()
+
+	err := testServer.client.CreateAll(context.Background(), resources)
 	assert.NoError(t, err)
 
 	// set statuses to ready
-	_, err = serv.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
+	_, err = testServer.server.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
 		ResourceId: &pb.ResourceID{
 			Resource: &pb.NameVariant{
 				Name: "mockOnline",
@@ -191,7 +188,7 @@ func TestMetadataDelete(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = serv.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
+	_, err = testServer.server.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
 		ResourceId: &pb.ResourceID{
 			Resource: &pb.NameVariant{
 				Name: "mockOfflineToDelete",
@@ -204,7 +201,7 @@ func TestMetadataDelete(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = serv.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
+	_, err = testServer.server.SetResourceStatus(context.Background(), &pb.SetStatusRequest{
 		ResourceId: &pb.ResourceID{
 			Resource: &pb.NameVariant{
 				Name: "mockOffline",
@@ -219,7 +216,7 @@ func TestMetadataDelete(t *testing.T) {
 
 	t.Run("delete provider with no dependencies", func(t *testing.T) {
 		// try to delete the online provider
-		_, err := serv.MarkForDeletion(ctx, &pb.MarkForDeletionRequest{
+		_, err := testServer.server.MarkForDeletion(context.Background(), &pb.MarkForDeletionRequest{
 			ResourceId: &pb.ResourceID{
 				Resource: &pb.NameVariant{
 					Name: "mockOfflineToDelete",
@@ -229,7 +226,7 @@ func TestMetadataDelete(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		res, err := serv.lookup.Lookup(ctx, ResourceID{
+		res, err := testServer.server.lookup.Lookup(context.Background(), ResourceID{
 			Name: "mockOfflineToDelete",
 			Type: PROVIDER,
 		})
@@ -241,7 +238,7 @@ func TestMetadataDelete(t *testing.T) {
 
 	t.Run("delete provider with dependencies", func(t *testing.T) {
 		// try to delete the online provider
-		_, err := serv.MarkForDeletion(ctx, &pb.MarkForDeletionRequest{
+		_, err := testServer.server.MarkForDeletion(context.Background(), &pb.MarkForDeletionRequest{
 			ResourceId: &pb.ResourceID{
 				Resource: &pb.NameVariant{
 					Name: "mockOffline",
@@ -253,7 +250,7 @@ func TestMetadataDelete(t *testing.T) {
 	})
 
 	t.Run("try to delete primary source", func(t *testing.T) {
-		_, err := serv.MarkForDeletion(ctx, &pb.MarkForDeletionRequest{
+		_, err := testServer.server.MarkForDeletion(context.Background(), &pb.MarkForDeletionRequest{
 			ResourceId: &pb.ResourceID{
 				Resource: &pb.NameVariant{
 					Name:    "primarydata",
@@ -266,7 +263,7 @@ func TestMetadataDelete(t *testing.T) {
 	})
 
 	t.Run("delete source that's not ready", func(t *testing.T) {
-		_, err := serv.MarkForDeletion(ctx, &pb.MarkForDeletionRequest{
+		_, err := testServer.server.MarkForDeletion(context.Background(), &pb.MarkForDeletionRequest{
 			ResourceId: &pb.ResourceID{
 				Resource: &pb.NameVariant{
 					Name:    "tf",

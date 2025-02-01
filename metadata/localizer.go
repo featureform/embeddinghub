@@ -21,7 +21,8 @@ import (
 const DEFAULT_GLUE_DATABASE = "featureform"
 
 type Localizer interface {
-	Localize(sv *pb.SourceVariant) (pl.Location, error)
+	LocalizeSourceVariant(sv *pb.SourceVariant) (pl.Location, error)
+	LocalizeFeatureVariant(fv *pb.FeatureVariant) (pl.Location, error)
 }
 
 type SparkLocalizer struct {
@@ -40,7 +41,7 @@ func NewSparkLocalizer(config pc.SerializedConfig) (*SparkLocalizer, error) {
 	}, nil
 }
 
-func (sl *SparkLocalizer) Localize(sv *pb.SourceVariant) (pl.Location, error) {
+func (sl *SparkLocalizer) LocalizeSourceVariant(sv *pb.SourceVariant) (pl.Location, error) {
 	logger := sl.logger.With("source_name", sv.Name, "source_variant", sv.Variant)
 	var location pl.Location
 	if sl.providerConfig.UsesCatalog() {
@@ -106,10 +107,15 @@ func (sl *SparkLocalizer) Localize(sv *pb.SourceVariant) (pl.Location, error) {
 	return location, nil
 }
 
+func (sl *SparkLocalizer) LocalizeFeatureVariant(fv *pb.FeatureVariant) (pl.Location, error) {
+	sl.logger.Warn("FeatureVariant localization not implemented for Spark")
+	return pl.NilLocation{}, nil
+}
+
 type SqlLocalizer struct {
 }
 
-func (sl *SqlLocalizer) Localize(sv *pb.SourceVariant) (pl.Location, error) {
+func (sl *SqlLocalizer) LocalizeSourceVariant(sv *pb.SourceVariant) (pl.Location, error) {
 	var resourceType string
 	switch sv.GetDefinition().(type) {
 	case *pb.SourceVariant_PrimaryData:
@@ -125,6 +131,14 @@ func (sl *SqlLocalizer) Localize(sv *pb.SourceVariant) (pl.Location, error) {
 		return nil, err
 	}
 	return pl.NewSQLLocation(tableName), nil
+}
+
+func (sl *SqlLocalizer) LocalizeFeatureVariant(sv *pb.FeatureVariant) (pl.Location, error) {
+	materializationName, err := ps.ResourceToTableName("Materialization", sv.Name, sv.Variant)
+	if err != nil {
+		return nil, err
+	}
+	return pl.NewSQLLocation(materializationName), nil
 }
 
 func GetLocalizer(providerType pt.Type, config pc.SerializedConfig) (Localizer, error) {

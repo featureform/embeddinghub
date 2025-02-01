@@ -78,6 +78,12 @@ func (t *SourceTask) Run() error {
 		logger.Errorw("Failed to get store", "error", err)
 		return err
 	}
+	defer func(sourceStore provider.OfflineStore) {
+		err := sourceStore.Close()
+		if err != nil {
+			logger.Errorf("could not close offline store: %v", err)
+		}
+	}(sourceStore)
 	logger = logger.With(
 		"resource_id", resID,
 		"is_primary", source.IsPrimaryData(),
@@ -218,7 +224,7 @@ func (t *SourceTask) runSQLTransformationJob(
 		resourceSnowflakeConfig = tempConfig
 	}
 
-	logger.Debugw("Created transformation query", "query", query)
+	logger.Debugw("Created SQL transformation query", "query", query)
 	providerResourceID := provider.ResourceID{Name: resID.Name, Variant: resID.Variant, Type: provider.Transformation}
 	transformationConfig := provider.TransformationConfig{
 		Type:           provider.SQLTransformation,
@@ -255,7 +261,7 @@ func (t *SourceTask) runDFTransformationJob(
 	}
 	code := transformSource.DFTransformationQuery()
 	sources := transformSource.DFTransformationSources()
-	logger.Debugw("SQL transform sources", "sources", sources)
+	logger.Debugw("DF transform sources", "sources", sources)
 
 	err = t.metadata.Tasks.AddRunLog(t.taskDef.TaskId, t.taskDef.ID, "Waiting for dependent jobs to complete...")
 	if err != nil {
@@ -282,7 +288,7 @@ func (t *SourceTask) runDFTransformationJob(
 		return err
 	}
 
-	logger.Debugw("Created transformation query")
+	logger.Debugw("Created DF transformation query")
 	providerResourceID := provider.ResourceID{Name: resID.Name, Variant: resID.Variant, Type: provider.Transformation}
 	transformationConfig := provider.TransformationConfig{
 		Type:           provider.DFTransformation,

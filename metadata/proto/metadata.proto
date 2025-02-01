@@ -277,6 +277,10 @@ message FeatureVariant {
   FeatureParameters additional_parameters = 22;
   ValueType type = 25;
   ResourceSnowflakeConfig resource_snowflake_config = 26;
+  bool is_deleted = 27 [deprecated = true];
+  google.protobuf.Timestamp deleted = 28 [deprecated = true];
+  string offline_store_provider = 29;
+  repeated Location offline_store_locations = 30;
 }
 
 message FeatureVariantRequest {
@@ -338,40 +342,42 @@ message Label {
 }
 
 message LabelVariant {
-    string name = 1;
-    string variant = 2;
-    string description = 3;
-    NameVariant source = 5;
-    string entity = 6;
-    google.protobuf.Timestamp created = 7;
-    string owner = 8;
-    string provider = 9;
-    ResourceStatus status = 10;
-    repeated NameVariant trainingsets = 11;
-    oneof location {
-        // Use entity_mappings instead of columns to support multi-label entities,
-        // even if there's only a single label per entity
-        Columns columns = 12 [deprecated=true];
-        Stream stream = 16;
-        EntityMappings entity_mappings = 20;
-    }
-    Tags tags = 13;
-    Properties properties = 14;
-    string task_id = 15 [deprecated=true];
-    ValueType type = 18;
-    repeated string task_id_list = 17;
-    ResourceSnowflakeConfig resource_snowflake_config = 19;
+  string name = 1;
+  string variant = 2;
+  string description = 3;
+  NameVariant source = 5;
+  string entity = 6;
+  google.protobuf.Timestamp created = 7;
+  string owner = 8;
+  string provider = 9;
+  ResourceStatus status = 10;
+  repeated NameVariant trainingsets = 11;
+  oneof location {
+    // Use entity_mappings instead of columns to support multi-label entities,
+    // even if there's only a single label per entity
+    Columns columns = 12 [deprecated = true];
+    Stream stream = 16;
+    EntityMappings entity_mappings = 22;
+  }
+  Tags tags = 13;
+  Properties properties = 14;
+  string task_id = 15 [deprecated = true];
+  ValueType type = 18;
+  repeated string task_id_list = 17;
+  ResourceSnowflakeConfig resource_snowflake_config = 19;
+  bool is_deleted = 20 [deprecated = true];
+  google.protobuf.Timestamp deleted = 21 [deprecated = true];
 }
 
 message EntityMappings {
-    repeated EntityMapping mappings = 1;
-    string value_column = 2;
-    string timestamp_column = 3;
+  repeated EntityMapping mappings = 1;
+  string value_column = 2;
+  string timestamp_column = 3;
 }
 
 message EntityMapping {
-    string name = 1;
-    string entity_column = 2;
+  string name = 1;
+  string entity_column = 2;
 }
 
 message LabelVariantRequest {
@@ -393,6 +399,8 @@ message Provider {
   repeated NameVariant labels = 11;
   Tags tags = 12;
   Properties properties = 13;
+  bool is_deleted = 14 [deprecated=true];
+  google.protobuf.Timestamp deleted = 15 [deprecated=true];
 }
 
 message ProviderRequest {
@@ -408,24 +416,26 @@ message TrainingSet {
 }
 
 message TrainingSetVariant {
-    string name = 1;
-    string variant = 2;
-    string description = 3;
-    string owner = 4;
-    google.protobuf.Timestamp created = 5;
-    string provider = 6;
-    ResourceStatus status = 7;
-    repeated NameVariant features = 8;
-    NameVariant label = 9;
-    google.protobuf.Timestamp last_updated = 13;
-    string schedule = 14;
-    repeated FeatureLag feature_lags = 15;
-    Tags tags = 16;
-    Properties properties = 17;
-    string task_id = 18 [deprecated=true];
-    repeated string task_id_list = 19;
-    ResourceSnowflakeConfig resource_snowflake_config = 20;
-    TrainingSetType type = 21;
+  string name = 1;
+  string variant = 2;
+  string description = 3;
+  string owner = 4;
+  google.protobuf.Timestamp created = 5;
+  string provider = 6;
+  ResourceStatus status = 7;
+  repeated NameVariant features = 8;
+  NameVariant label = 9;
+  google.protobuf.Timestamp last_updated = 13;
+  string schedule = 14;
+  repeated FeatureLag feature_lags = 15;
+  Tags tags = 16;
+  Properties properties = 17;
+  string task_id = 18 [deprecated = true];
+  repeated string task_id_list = 19;
+  ResourceSnowflakeConfig resource_snowflake_config = 20;
+  bool is_deleted = 21 [deprecated = true];
+  google.protobuf.Timestamp deleted = 22 [deprecated = true];
+  TrainingSetType type = 23;
 }
 
 message TrainingSetVariantRequest {
@@ -510,6 +520,8 @@ message SourceVariant {
   string task_id = 19 [deprecated = true];
   google.protobuf.Duration max_job_duration = 20;
   repeated string task_id_list = 21;
+  bool is_deleted = 22 [deprecated=true];
+  google.protobuf.Timestamp deleted = 23 [deprecated=true];
 }
 
 message SourceVariantRequest {
@@ -538,6 +550,15 @@ message SparkFlags {
   repeated TableProperty table_properties = 3;
 }
 
+message Location{
+  oneof location {
+    SQLTable table = 1;
+    FileStoreTable filestore = 2;
+    CatalogTable catalog = 3;
+    Kafka kafka = 4;
+  }
+}
+
 message Transformation {
   oneof type {
     SQLTransformation SQLTransformation = 1;
@@ -555,8 +576,8 @@ message Transformation {
     SQLTable table = 7;
     FileStoreTable filestore = 8;
     CatalogTable catalog = 9;
+    Kafka kafka = 10;
   }
-  Kafka kafka = 10;
 }
 
 message HashPartition {
@@ -733,8 +754,8 @@ message PruneResourceResponse {
 }
 
 enum TrainingSetType {
-    TRAINING_SET_TYPE_UNSPECIFIED = 0;
-    TRAINING_SET_TYPE_DYNAMIC = 1;
-    TRAINING_SET_TYPE_STATIC = 2;
-    TRAINING_SET_TYPE_VIEW = 3;
+  TRAINING_SET_TYPE_UNSPECIFIED = 0;
+  TRAINING_SET_TYPE_DYNAMIC = 1;
+  TRAINING_SET_TYPE_STATIC = 2;
+  TRAINING_SET_TYPE_VIEW = 3;
 }

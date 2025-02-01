@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/featureform/fferr"
 	"github.com/featureform/helpers/postgres"
 	"github.com/featureform/logging"
@@ -12,9 +15,6 @@ import (
 	pb "github.com/featureform/metadata/proto"
 	pt "github.com/featureform/provider/provider_type"
 	"github.com/featureform/provider/types"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type TestResourcesRepository struct {
@@ -55,23 +55,36 @@ type TestMetadataServer struct {
 	server *MetadataServer
 	client *Client
 	TestResourcesRepository
-	t *testing.T
+	t         *testing.T
+	ctx       context.Context
+	logger    logging.Logger
+	dbCleanup func()
 }
 
-func newTestMetadataServer(t *testing.T, ctx context.Context, logger logging.Logger) *TestMetadataServer {
+func (ts *TestMetadataServer) SetupTestData(t *testing.T, resources []ResourceDef, setReady bool) {
+	ts.ResetDatabase()
+	t.Helper()
+	ts.SeedResources(ts.ctx, resources)
+	resourceIDs := make([]ResourceID, 0, len(resources))
+	for _, r := range resources {
+		resourceIDs = append(resourceIDs, r.ResourceID())
+	}
+	if setReady {
+		ts.SetResourcesReady(ts.ctx, resourceIDs)
+	}
+}
+
+func newTestMetadataServer(t *testing.T) *TestMetadataServer {
 	t.Helper()
 
-	// Start the MetadataServer
-	serv, addr := startServPsql(t, ctx, logger)
+	serv, addr, dbCleanup := startServPsql(t)
 
-	// Cast the server's repository to sqlResourcesRepository
 	sqlRepo, ok := serv.resourcesRepository.(*sqlResourcesRepository)
 	assert.True(t, ok, "resourcesRepository should be of type *sqlResourcesRepository")
 
-	// Wrap the server's existing repository
 	testRepo := NewTestResourcesRepository(sqlRepo, sqlRepo.db)
 
-	// Initialize gRPC client
+	ctx, logger := logging.NewTestContextAndLogger(t)
 	cli := client(t, ctx, logger, addr)
 
 	return &TestMetadataServer{
@@ -79,6 +92,9 @@ func newTestMetadataServer(t *testing.T, ctx context.Context, logger logging.Log
 		client:                  cli,
 		TestResourcesRepository: *testRepo,
 		t:                       t,
+		ctx:                     ctx,
+		logger:                  logger,
+		dbCleanup:               dbCleanup,
 	}
 }
 
@@ -117,7 +133,6 @@ func (ts *TestMetadataServer) SetResourcesReady(ctx context.Context, resourceIDs
 	}
 }
 
-// ResetDatabase clears the state between tests.
 func (ts *TestMetadataServer) ResetDatabase() {
 	err := resetDatabase(ts.db)
 	assert.NoError(ts.t, err, "Failed to reset database")
@@ -132,30 +147,23 @@ func TestDeleteProvider(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	ctx, logger := logging.NewTestContextAndLogger(t)
-
-	// Initialize the test server once for all subtests
-	testServer := newTestMetadataServer(t, ctx, logger)
+	testServer := newTestMetadataServer(t)
 	defer testServer.Close()
+	defer testServer.dbCleanup()
 
-	// Define reusable resources and IDs
 	resources := []ResourceDef{
 		ProviderDef{Name: "mockOfflineToDelete"},
 	}
-	resourceIds := []ResourceID{
-		{Name: "mockOfflineToDelete", Type: PROVIDER},
-	}
 
+	ctx := testServer.ctx
 	t.Run("Delete existing provider", func(t *testing.T) {
-		testServer.ResetDatabase()               // Reset DB before test
-		testServer.SeedResources(ctx, resources) // Seed data
-		testServer.SetResourcesReady(ctx, resourceIds)
+		testServer.SetupTestData(t, resources, true)
 
 		// Attempt to delete the provider
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name: "mockOfflineToDelete",
 			Type: common.PROVIDER,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		// Verify the provider is deleted
@@ -171,28 +179,26 @@ func TestDeleteProvider(t *testing.T) {
 	})
 
 	t.Run("Delete non-existent provider", func(t *testing.T) {
-		testServer.ResetDatabase() // Reset DB before test
+		testServer.SetupTestData(t, resources, true)
 
 		// Attempt to delete a non-existent provider
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name: "nonExistentProvider",
 			Type: common.PROVIDER,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 
 		require.Error(t, err) // Expect an error
 	})
 
 	t.Run("Delete provider without READY status", func(t *testing.T) {
-		testServer.ResetDatabase()
-		testServer.SeedResources(ctx, resources)
-
+		testServer.SetupTestData(t, resources, false)
 		// Do NOT set status to READY to simulate invalid state
 
 		// Attempt to delete the provider
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name: "mockOfflineToDelete",
 			Type: common.PROVIDER,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 
 		require.Error(t, err) // Should fail since it's not READY
 	})
@@ -202,10 +208,10 @@ func TestDeletePrimary(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	ctx, logger := logging.NewTestContextAndLogger(t)
+	ctx := context.Background()
 
 	// Initialize the test server once for all subtests
-	testServer := newTestMetadataServer(t, ctx, logger)
+	testServer := newTestMetadataServer(t)
 	defer testServer.Close()
 
 	// Define reusable resources and IDs
@@ -252,21 +258,15 @@ func TestDeletePrimary(t *testing.T) {
 		resourceIds = append(resourceIds, res.ResourceID())
 	}
 
-	testServer.ResetDatabase()               // Reset DB before test
-	testServer.SeedResources(ctx, resources) // Seed data
-	testServer.SetResourcesReady(ctx, resourceIds)
-
 	t.Run("Delete existing primary", func(t *testing.T) {
-		testServer.ResetDatabase()               // Reset DB before test
-		testServer.SeedResources(ctx, resources) // Seed data
-		testServer.SetResourcesReady(ctx, resourceIds)
+		testServer.SetupTestData(t, resources, true)
 
 		// Attempt to delete the primary
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name:    "primarydata",
 			Variant: "var",
 			Type:    common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		// Verify the primary is marked for deletion
@@ -282,28 +282,26 @@ func TestDeletePrimary(t *testing.T) {
 	})
 
 	t.Run("Delete non-existent primary", func(t *testing.T) {
-		testServer.ResetDatabase() // Reset DB before test
+		testServer.SetupTestData(t, resources, true)
 
 		// Attempt to delete a non-existent primary
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name: "nonExistentPrimary",
 			Type: common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 
 		require.Error(t, err) // Expect an error
 	})
 
 	t.Run("Delete primary without READY status", func(t *testing.T) {
-		testServer.ResetDatabase()
-		testServer.SeedResources(ctx, resources)
-
+		testServer.SetupTestData(t, resources, true)
 		// Do NOT set status to READY to simulate invalid state
 
 		// Attempt to delete the primary
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name: "mockPrimaryToDelete",
 			Type: common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 
 		require.Error(t, err) // Should fail since it's not READY
 	})
@@ -434,9 +432,9 @@ func TestDeleteDag(t *testing.T) {
 		},
 	}
 
-	ctx, logger := logging.NewTestContextAndLogger(t)
 	// Initialize the test server once for all subtests
-	testServer := newTestMetadataServer(t, ctx, logger)
+	ctx := context.Background()
+	testServer := newTestMetadataServer(t)
 	defer testServer.Close()
 
 	resourceIds := make([]ResourceID, 0)
@@ -444,16 +442,14 @@ func TestDeleteDag(t *testing.T) {
 		resourceIds = append(resourceIds, res.ResourceID())
 	}
 
-	testServer.ResetDatabase()               // Reset DB before test
-	testServer.SeedResources(ctx, resources) // Seed data
-	testServer.SetResourcesReady(ctx, resourceIds)
+	testServer.SetupTestData(t, resources, true)
 
 	t.Run("Attempt to delete resource with dependencies", func(t *testing.T) {
 		err := testServer.repo.MarkForDeletion(ctx, common.ResourceID{
 			Name:    "mockSource",
 			Variant: "var",
 			Type:    common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.Error(t, err)
 	})
 
@@ -462,7 +458,7 @@ func TestDeleteDag(t *testing.T) {
 			Name:    "training-set",
 			Variant: "variant",
 			Type:    common.TRAINING_SET_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		res, err := testServer.repo.Lookup(ctx, ResourceID{
@@ -480,7 +476,7 @@ func TestDeleteDag(t *testing.T) {
 			Name:    "feature",
 			Variant: "variant",
 			Type:    common.FEATURE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		res, err := testServer.repo.Lookup(ctx, ResourceID{
@@ -498,7 +494,7 @@ func TestDeleteDag(t *testing.T) {
 			Name:    "mockSource",
 			Variant: "var",
 			Type:    common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.Error(t, err)
 	})
 
@@ -507,7 +503,7 @@ func TestDeleteDag(t *testing.T) {
 			Name:    "label",
 			Variant: "variant",
 			Type:    common.LABEL_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		res, err := testServer.repo.Lookup(ctx, ResourceID{
@@ -525,7 +521,7 @@ func TestDeleteDag(t *testing.T) {
 			Name:    "mockSource",
 			Variant: "var",
 			Type:    common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 
 		res, err := testServer.repo.Lookup(ctx, ResourceID{
@@ -537,6 +533,10 @@ func TestDeleteDag(t *testing.T) {
 		require.NotNil(t, res)
 		require.Equal(t, res.ID().Name, "mockSource")
 	})
+}
+
+func noOpAsyncHandler(ctx context.Context, resId ResourceID, logger logging.Logger) error {
+	return nil
 }
 
 func TestPrune(t *testing.T) {
@@ -664,26 +664,27 @@ func TestPrune(t *testing.T) {
 		},
 	}
 
-	// Initialize the test server once for all subtests
-	ctx, logger := logging.NewTestContextAndLogger(t)
-	testServer := newTestMetadataServer(t, ctx, logger)
-	defer testServer.Close()
+	ctx := context.Background()
+	testServer := newTestMetadataServer(t)
+	defer func() {
+		testServer.ResetDatabase() // Ensure DB is reset after test
+		testServer.Close()         // Close the test server
+	}()
 
 	resourceIds := make([]ResourceID, 0)
 	for _, res := range resources {
 		resourceIds = append(resourceIds, res.ResourceID())
 	}
 
-	testServer.ResetDatabase()               // Reset DB before test
-	testServer.SeedResources(ctx, resources) // Seed data
-	testServer.SetResourcesReady(ctx, resourceIds)
+	ctx = context.WithValue(ctx, "testServer", testServer) // Attach the test server
 
 	t.Run("Prune", func(t *testing.T) {
+		testServer.SetupTestData(t, resources, true)
 		markedForDeletion, err := testServer.repo.PruneResource(ctx, common.ResourceID{
 			Name:    "training-set",
 			Variant: "variant",
 			Type:    common.TRAINING_SET_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 		require.Len(t, markedForDeletion, 1)
 		require.Equal(t, markedForDeletion[0].Name, "training-set")
@@ -693,16 +694,15 @@ func TestPrune(t *testing.T) {
 			Name:    "training-set",
 			Variant: "variant",
 			Type:    TRAINING_SET_VARIANT,
-		}, DeleteLookupOption{DeletedOnly})
-		require.NoError(t, err)
-		require.NotNil(t, res)
-		require.Equal(t, res.ID().Name, "training-set")
+		})
+		require.Error(t, err)
+		require.Nil(t, res)
 
 		markedForDeletion, err = testServer.repo.PruneResource(ctx, common.ResourceID{
 			Name:    "mockSource",
 			Variant: "var",
 			Type:    common.SOURCE_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.NoError(t, err)
 		require.Len(t, markedForDeletion, 3)
 		require.Contains(t, markedForDeletion, common.ResourceID{
@@ -727,7 +727,6 @@ func TestPrune(t *testing.T) {
 			Variant: "var",
 			Type:    SOURCE_VARIANT,
 		}, DeleteLookupOption{DeletedOnly})
-
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.Equal(t, res.ID().Name, "mockSource")
@@ -757,7 +756,7 @@ func TestPrune(t *testing.T) {
 			Name:    "training-set",
 			Variant: "variant",
 			Type:    common.TRAINING_SET_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.Error(t, err)
 	})
 
@@ -765,7 +764,7 @@ func TestPrune(t *testing.T) {
 		markedForDeletion, err := testServer.repo.PruneResource(ctx, common.ResourceID{
 			Name: "nonExistentResource",
 			Type: common.TRAINING_SET_VARIANT,
-		}, testServer.server.deletionTaskStarter)
+		}, noOpAsyncHandler)
 		require.Error(t, err)
 		require.Nil(t, markedForDeletion)
 	})

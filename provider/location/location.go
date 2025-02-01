@@ -10,6 +10,7 @@ package location
 import (
 	"encoding/json"
 	"fmt"
+	pb "github.com/featureform/metadata/proto"
 	"strings"
 
 	"github.com/featureform/fferr"
@@ -24,6 +25,7 @@ const (
 	SQLLocationType       LocationType = "sql"
 	FileStoreLocationType LocationType = "filestore"
 	CatalogLocationType   LocationType = "catalog"
+	KafkaLocationType     LocationType = "kafka"
 )
 
 type Location interface {
@@ -31,6 +33,7 @@ type Location interface {
 	Type() LocationType
 	Serialize() (string, error)
 	Deserialize(config []byte) error
+	Proto() *pb.Location
 }
 
 type NilLocation struct{}
@@ -56,6 +59,10 @@ func (loc NilLocation) Deserialize(config []byte) error {
 	errMsg := fmt.Sprintf("Cannot deserialize into nil location\n%s\n", confStr)
 	logging.GlobalLogger.Error(errMsg)
 	return fferr.NewInternalErrorf(errMsg)
+}
+
+func (loc NilLocation) Proto() *pb.Location {
+	return nil
 }
 
 type JSONLocation struct {
@@ -157,6 +164,18 @@ func (l *SQLLocation) Deserialize(config []byte) error {
 	return nil
 }
 
+func (l *SQLLocation) Proto() *pb.Location {
+	return &pb.Location{
+		Location: &pb.Location_Table{
+			Table: &pb.SQLTable{
+				Database: l.database,
+				Schema:   l.schema,
+				Name:     l.table,
+			},
+		},
+	}
+}
+
 func NewFileLocation(path filestore.Filepath) Location {
 	return &FileStoreLocation{path: path}
 }
@@ -207,6 +226,16 @@ func (l *FileStoreLocation) Deserialize(config []byte) error {
 	}
 	l.path = &fp
 	return nil
+}
+
+func (l *FileStoreLocation) Proto() *pb.Location {
+	return &pb.Location{
+		Location: &pb.Location_Filestore{
+			Filestore: &pb.FileStoreTable{
+				Path: l.path.ToURI(),
+			},
+		},
+	}
 }
 
 func NewCatalogLocation(database, table, tableFormat string) Location {
@@ -272,4 +301,100 @@ func (l *CatalogLocation) Deserialize(config []byte) error {
 	l.database = locationParts[0]
 	l.table = locationParts[1]
 	return nil
+}
+
+func (l *CatalogLocation) Proto() *pb.Location {
+	return &pb.Location{
+		Location: &pb.Location_Catalog{
+			Catalog: &pb.CatalogTable{
+				Database:    l.database,
+				Table:       l.table,
+				TableFormat: l.tableFormat,
+			},
+		},
+	}
+}
+
+type KafkaLocation struct {
+	Topic string
+}
+
+func (l *KafkaLocation) Location() string {
+	return l.Topic
+}
+
+// Type returns the type of the location as Kafka.
+func (l *KafkaLocation) Type() LocationType {
+	return KafkaLocationType
+}
+
+func (l *KafkaLocation) Serialize() (string, error) {
+	data, err := json.Marshal(l)
+	if err != nil {
+		return "", fferr.NewInternalErrorf("failed to serialize KafkaLocation: %v", err)
+	}
+	return string(data), nil
+}
+
+func (l *KafkaLocation) MarshalJSON() ([]byte, error) {
+	return json.Marshal(JSONLocation{
+		OutputLocation: l.Location(),
+		LocationType:   "kafka",
+	})
+}
+
+func (l *KafkaLocation) Deserialize(config []byte) error {
+	var jsonLoc JSONLocation
+	if err := json.Unmarshal(config, &jsonLoc); err != nil {
+		return fferr.NewInternalErrorf("failed to deserialize KafkaLocation: %v", err)
+	}
+	if jsonLoc.LocationType != string(KafkaLocationType) {
+		return fferr.NewInternalErrorf("invalid location type for KafkaLocation: %s", jsonLoc.LocationType)
+	}
+	l.Topic = jsonLoc.OutputLocation
+	return nil
+}
+
+func (l *KafkaLocation) Proto() *pb.Location {
+	return &pb.Location{
+		Location: &pb.Location_Kafka{
+			Kafka: &pb.Kafka{
+				Topic: l.Topic,
+			},
+		},
+	}
+}
+
+func NewKafkaLocation(topic string) Location {
+	return &KafkaLocation{Topic: topic}
+}
+
+func FromProto(pbLocation *pb.Location) (Location, error) {
+	if pbLocation == nil {
+		return nil, fferr.NewInternalErrorf("nil Location protobuf provided")
+	}
+
+	switch loc := pbLocation.Location.(type) {
+	case *pb.Location_Table:
+		return NewFullyQualifiedSQLLocation(loc.Table.Database, loc.Table.Schema, loc.Table.Name), nil
+
+	case *pb.Location_Filestore:
+		// Handle FileStoreTable case
+		fp := filestore.FilePath{}
+		err := fp.ParseFilePath(loc.Filestore.Path)
+		if err != nil {
+			return nil, fferr.NewInternalErrorf("invalid filestore path: %v", err)
+		}
+		return NewFileLocation(&fp), nil
+
+	case *pb.Location_Catalog:
+		return NewCatalogLocation(loc.Catalog.Database, loc.Catalog.Table, loc.Catalog.TableFormat), nil
+
+	case *pb.Location_Kafka:
+		return NewKafkaLocation(loc.Kafka.Topic), nil
+
+	default:
+		// Handle unknown or nil location
+		return nil, fferr.NewInternalErrorf("unknown or unsupported location type in protobuf: %T", loc)
+	}
 }

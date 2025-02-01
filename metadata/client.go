@@ -1148,7 +1148,7 @@ func (client *Client) ListProviders(ctx context.Context) ([]*Provider, error) {
 
 func (client *Client) GetProvider(ctx context.Context, provider string) (*Provider, error) {
 	if provider == "" {
-		return nil, fferr.NewInvalidArgumentError(fmt.Errorf("provider cannot be empty"))
+		return nil, fferr.NewInvalidArgumentErrorf("provider cannot be empty")
 	}
 
 	providerList, err := client.GetProviders(ctx, []string{provider})
@@ -1287,7 +1287,6 @@ func (def EntityDef) ResourceType() ResourceType {
 	return ENTITY
 }
 
-// ToResourceID
 func (def EntityDef) ResourceID() ResourceID {
 	return ResourceID{
 		Name: def.Name,
@@ -1750,6 +1749,30 @@ func (fn fetchPropertiesFn) Properties() Properties {
 	return properties
 }
 
+type offlineStoreLocationsGetter interface {
+	GetOfflineStoreLocations() []*pb.Location
+}
+
+type fetchOfflineStoreLocationsFn struct {
+	getter offlineStoreLocationsGetter
+}
+
+type offlineStoreProviderGetter interface {
+	GetOfflineStoreProvider() string
+}
+
+type fetchOfflineStoreProviderFn struct {
+	getter offlineStoreProviderGetter
+}
+
+func (fn fetchOfflineStoreProviderFn) OfflineStoreProvider() string {
+	return fn.getter.GetOfflineStoreProvider()
+}
+
+func (fn fetchOfflineStoreProviderFn) FetchOfflineStoreProvider(client *Client, ctx context.Context) (*Provider, error) {
+	return client.GetProvider(ctx, fn.OfflineStoreProvider())
+}
+
 type serializedConfigGetter interface {
 	GetSerializedConfig() []byte
 }
@@ -1820,19 +1843,23 @@ type FeatureVariant struct {
 	protoStringer
 	fetchTagsFn
 	fetchPropertiesFn
+	fetchOfflineStoreProviderFn
+	fetchOfflineStoreLocationsFn
 }
 
 func WrapProtoFeatureVariant(serialized *pb.FeatureVariant) *FeatureVariant {
 	return &FeatureVariant{
-		serialized:           serialized,
-		fetchTrainingSetsFns: fetchTrainingSetsFns{serialized},
-		fetchProviderFns:     fetchProviderFns{serialized},
-		fetchSourceFns:       fetchSourceFns{serialized},
-		createdFn:            createdFn{serialized},
-		lastUpdatedFn:        lastUpdatedFn{serialized},
-		protoStringer:        protoStringer{serialized},
-		fetchTagsFn:          fetchTagsFn{serialized},
-		fetchPropertiesFn:    fetchPropertiesFn{serialized},
+		serialized:                   serialized,
+		fetchTrainingSetsFns:         fetchTrainingSetsFns{serialized},
+		fetchProviderFns:             fetchProviderFns{serialized},
+		fetchSourceFns:               fetchSourceFns{serialized},
+		createdFn:                    createdFn{serialized},
+		lastUpdatedFn:                lastUpdatedFn{serialized},
+		protoStringer:                protoStringer{serialized},
+		fetchTagsFn:                  fetchTagsFn{serialized},
+		fetchPropertiesFn:            fetchPropertiesFn{serialized},
+		fetchOfflineStoreProviderFn:  fetchOfflineStoreProviderFn{serialized},
+		fetchOfflineStoreLocationsFn: fetchOfflineStoreLocationsFn{serialized},
 	}
 }
 
@@ -1995,6 +2022,14 @@ func (variant *FeatureVariant) LocationStream() interface{} {
 		OfflineProvider: src.OfflineProvider,
 	}
 	return stream
+}
+
+func (variant *FeatureVariant) GetOfflineStoreProvider() string {
+	return variant.serialized.GetOfflineStoreProvider()
+}
+
+func (variant *FeatureVariant) GetOfflineStoreLocations() []*pb.Location {
+	return variant.serialized.GetOfflineStoreLocations()
 }
 
 func (variant *FeatureVariant) Tags() Tags {

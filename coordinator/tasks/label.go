@@ -12,11 +12,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/featureform/logging"
-
 	"github.com/featureform/provider/provider_schema"
 
 	"github.com/featureform/fferr"
+	"github.com/featureform/logging"
 	"github.com/featureform/metadata"
 	"github.com/featureform/provider"
 	pl "github.com/featureform/provider/location"
@@ -54,7 +53,7 @@ func (t *LabelTask) Run() error {
 		return err
 	}
 
-	logger.Debugw("Label source", "source", label.Source())
+	logger = t.logger.With("source", label.Source())
 	sourceNameVariant := label.Source()
 	loc, err := label.Location()
 	if err != nil {
@@ -83,7 +82,13 @@ func (t *LabelTask) Run() error {
 	if getStoreErr != nil {
 		return getStoreErr
 	}
-
+	defer func(sourceStore provider.OfflineStore, logger logging.Logger) {
+		err := sourceStore.Close()
+		if err != nil {
+			logger.Errorf("could not close offline store: %v", err)
+		}
+		logger.Debugw("Closed offline store")
+	}(sourceStore, logger)
 	var sourceLocation pl.Location
 	var sourceLocationErr error
 	if source.IsSQLTransformation() || source.IsDFTransformation() {

@@ -250,6 +250,15 @@ func (id ResourceID) String() string {
 	return fmt.Sprintf("%s %s (%s)", id.Type, id.Name, id.Variant)
 }
 
+// TODO Remove this and consolidate
+func (id ResourceID) ToCommonResourceID() common.ResourceID {
+	return common.ResourceID{
+		Name:    id.Name,
+		Variant: id.Variant,
+		Type:    common.ResourceType(id.Type),
+	}
+}
+
 var bannedStrings = [...]string{"__"}
 var bannedPrefixes = [...]string{"_"}
 var bannedSuffixes = [...]string{"_"}
@@ -1952,19 +1961,26 @@ func (serv *MetadataServer) SyncUnfinishedRuns(ctx context.Context, empty *schpr
 }
 
 func NewMetadataServer(config *Config) (*MetadataServer, error) {
-	config.Logger.Infow("Creating new metadata server", "Address:", config.Address)
+	if config == nil {
+		return nil, fferr.NewInternalErrorf("config cannot be nil")
+	}
+
+	config.Logger.Infow("Creating new metadata server", "address", config.Address)
+
 	baseLookup := MemoryResourceLookup{config.TaskManager.Storage}
 	wrappedLookup, err := initializeLookup(config, &baseLookup, search.NewMeilisearch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize lookup: %w", err)
 	}
+
 	resourcesRepo, err := NewResourcesRepositoryFromLookup(&baseLookup)
 	if err != nil {
 		config.Logger.Errorw("Failed to create resources repository", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create resources repository: %w", err)
 	}
+
 	if resourcesRepo == nil {
-		return nil, fferr.NewInternalErrorf("resourcesRepository is nil")
+		return nil, fferr.NewInternalErrorf("resources repository is nil")
 	}
 
 	return &MetadataServer{
@@ -2373,6 +2389,13 @@ func (serv *MetadataServer) CreateFeatureVariant(ctx context.Context, variantReq
 
 	variant := variantRequest.FeatureVariant
 	variant.Created = tspb.New(time.Now())
+
+	logger.Debugw("Adding feature location")
+	if err := serv.featureVariantBackwardsCompatibility(ctx, variant, false); err != nil {
+		logger.Errorw("failed to ensure feature variant backwards compatibility", "error", err)
+		return nil, err
+	}
+
 	taskTarget := scheduling.NameVariant{Name: variant.Name, Variant: variant.Variant, ResourceType: FEATURE_VARIANT.String()}
 	task, err := serv.taskManager.CreateTask(ctx, "mytask", scheduling.ResourceCreation, taskTarget)
 	if err != nil {
@@ -2401,6 +2424,11 @@ func (serv *MetadataServer) PruneResource(ctx context.Context, request *pb.Prune
 	logger.Debugw("looking up resource to delete", "resource_id", resId)
 	if _, err := serv.lookup.Lookup(ctx, notCommonResId); err != nil {
 		logger.Errorw("could not find resource to delete", "error", err.Error())
+		return &pb.PruneResourceResponse{}, err
+	}
+
+	if err := serv.ensureDependentFeatureBackwardsCompatability(ctx, resId, logger); err != nil {
+		logger.Errorw("failed to ensure feature variant backwards compatibility", "error", err)
 		return &pb.PruneResourceResponse{}, err
 	}
 
@@ -2440,6 +2468,60 @@ func (serv *MetadataServer) MarkForDeletion(ctx context.Context, request *pb.Mar
 
 	logger.Info("Successfully marked resource for deletion")
 	return &pb.MarkForDeletionResponse{}, nil
+}
+
+// ensures dependent feature variants of a resource have updated fields
+// (offlineStoreProvider and offlineStoreLocations) before deletion. This allows
+// feature variants to be deleted independently of their sources, which may have
+// already been removed.
+func (serv *MetadataServer) ensureDependentFeatureBackwardsCompatability(ctx context.Context, resId common.ResourceID, logger logging.Logger) error {
+	deps, err := serv.resourcesRepository.GetDependencies(ctx, resId)
+	if err != nil {
+		logger.Errorw("failed to get dependencies", "error", err)
+		return err
+	}
+
+	for _, dep := range deps {
+		if dep.Type == common.FEATURE_VARIANT {
+			if err := serv.updateFeatureVariant(ctx, dep, logger); err != nil {
+				return fferr.NewInternalErrorf("failed to update feature variant %s: %v", dep.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (serv *MetadataServer) updateFeatureVariant(ctx context.Context, dep common.ResourceID, logger logging.Logger) error {
+	fv, err := serv.lookup.Lookup(ctx, ResourceID{
+		Name:    dep.Name,
+		Variant: dep.Variant,
+		Type:    FEATURE_VARIANT,
+	})
+	if err != nil {
+		logger.Errorw("failed to lookup feature variant",
+			"name", dep.Name,
+			"variant", dep.Variant,
+			"error", err,
+		)
+		return err
+	}
+
+	f, ok := fv.(*featureVariantResource)
+	if !ok {
+		logger.DPanic("lookup returned wrong type")
+		return fferr.NewInternalErrorf("lookup should have returned a feature variant")
+	}
+	serialized := f.serialized
+	if err := serv.featureVariantBackwardsCompatibility(ctx, serialized, true); err != nil {
+		logger.Errorw("failed to add feature location",
+			"name", dep.Name,
+			"variant", dep.Variant,
+			"error", err,
+		)
+		return err
+	}
+
+	return nil
 }
 
 func (serv *MetadataServer) deletionTaskStarter(ctx context.Context, resId ResourceID, logger logging.Logger) error {
@@ -2610,7 +2692,7 @@ func (serv *MetadataServer) validateSourceDeletion(ctx context.Context, sv *sour
 func (serv *MetadataServer) validateFeatureDeletion(ctx context.Context, fv *featureVariantResource, logger logging.Logger) error {
 	wrapped := WrapProtoFeatureVariant(fv.serialized)
 	serv.Logger.Debugw("Check provider for deletion", "provider", wrapped.Provider())
-	return serv.checkProviderSupportsDelete(ctx, wrapped.Provider(), logger)
+	return serv.checkProviderSupportsDelete(ctx, wrapped.OfflineStoreProvider(), logger)
 }
 
 func (serv *MetadataServer) validateLabelDeletion(ctx context.Context, lv *labelVariantResource, logger logging.Logger) error {
@@ -2624,9 +2706,10 @@ func (serv *MetadataServer) FinalizeDeletion(ctx context.Context, request *pb.Fi
 	logger = logger.WithResource(logging.ResourceType(request.ResourceId.ResourceType), request.ResourceId.Resource.Name, request.ResourceId.Resource.Variant)
 	logger.Infow("Finalizing resource deletion")
 	resId := ResourceID{Name: request.ResourceId.Resource.Name, Variant: request.ResourceId.Resource.Variant, Type: ResourceType(request.ResourceId.ResourceType)}
-	if err := serv.lookup.Delete(ctx, resId); err != nil {
-		logger.Error("Could not delete resource", "error", err.Error())
-		return nil, err
+	commonResID := common.ResourceID{Name: resId.Name, Variant: resId.Variant, Type: common.ResourceType(resId.Type)}
+	if err := serv.resourcesRepository.Archive(ctx, commonResID); err != nil {
+		logger.Errorw("Failed to archive resource", "error", err.Error())
+		return &pb.FinalizeDeletionResponse{}, err
 	}
 
 	logger.Info("Successfully Finalized Delete")
@@ -2645,6 +2728,13 @@ func (serv *MetadataServer) GetFeatureVariants(stream pb.Metadata_GetFeatureVari
 	_, ctx, logger := serv.Logger.InitializeRequestID(stream.Context())
 	logger.Info("Opened Get Feature Variants stream")
 	return serv.genericGet(ctx, stream, FEATURE_VARIANT, func(msg proto.Message) error {
+		fv, isFeatureVariant := msg.(*pb.FeatureVariant)
+		if !isFeatureVariant {
+			return fferr.NewInternalErrorf("expected source variant, got %T", msg)
+		}
+		if err := serv.featureVariantBackwardsCompatibility(ctx, fv, true); err != nil {
+			return err
+		}
 		return stream.Send(msg.(*pb.FeatureVariant))
 	})
 }
@@ -2725,6 +2815,10 @@ func (serv *MetadataServer) CreateTrainingSetVariant(ctx context.Context, varian
 	}
 	variant.TaskIdList = []string{task.ID.String()}
 
+	if err := tsRes.Validate(ctx, serv.lookup); err != nil {
+		return nil, err
+	}
+
 	return serv.genericCreate(ctx, tsRes, func(name, variant string) Resource {
 		return &trainingSetResource{
 			&pb.TrainingSet{
@@ -2795,6 +2889,106 @@ func (serv *MetadataServer) CreateSourceVariant(ctx context.Context, variantRequ
 	})
 }
 
+func (serv *MetadataServer) addFeatureProviderAndLocation(ctx context.Context, fv *pb.FeatureVariant, logger logging.Logger) error {
+	logger.Debugw("Adding feature location and provider")
+
+	if err := serv.fillOfflineStoreProvider(ctx, fv, logger); err != nil {
+		return err
+	}
+
+	if err := serv.fillOfflineStoreLocations(ctx, fv, logger); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (serv *MetadataServer) fillOfflineStoreProvider(ctx context.Context, fv *pb.FeatureVariant, logger logging.Logger) error {
+	if fv.GetOfflineStoreProvider() != "" {
+		logger.Debug("Offline store provider is already set")
+		return nil
+	}
+
+	source := fv.GetSource()
+	if source == nil {
+		logger.Errorw("FeatureVariant has no offline store provider or source")
+		return fferr.NewInternalErrorf("FeatureVariant has no offline store provider or source")
+	}
+
+	sv, err := serv.lookup.Lookup(ctx, ResourceID{Name: source.Name, Variant: source.Variant, Type: SOURCE_VARIANT})
+	if err != nil {
+		logger.Errorw("Failed to lookup source variant", "error", err)
+		return err
+	}
+
+	svProto, ok := sv.Proto().(*pb.SourceVariant)
+	if !ok {
+		return fferr.NewInternalErrorf("source variant resource is not a source variant proto")
+	}
+
+	sourceProviderName := svProto.Provider
+	sourceProvider, err := serv.lookup.Lookup(ctx, ResourceID{Name: sourceProviderName, Type: PROVIDER})
+	if err != nil {
+		logger.Errorw("Failed to lookup provider resource", "error", err)
+		return err
+	}
+
+	providerProto, ok := sourceProvider.Proto().(*pb.Provider)
+	if !ok {
+		logger.Errorw("Provider resource is not a provider proto")
+		return fferr.NewInternalErrorf("provider resource is not a provider proto")
+	}
+
+	fv.OfflineStoreProvider = providerProto.Name
+	logger.Debugw("Backfilled offline store provider for feature", "provider", providerProto.Name)
+
+	return nil
+}
+
+func (serv *MetadataServer) fillOfflineStoreLocations(ctx context.Context, fv *pb.FeatureVariant, logger logging.Logger) error {
+	if len(fv.GetOfflineStoreLocations()) > 0 {
+		logger.Debug("Offline store locations are already set")
+		return nil
+	}
+
+	providerName := fv.GetOfflineStoreProvider()
+	provider, err := serv.lookup.Lookup(ctx, ResourceID{Name: providerName, Type: PROVIDER})
+	if err != nil {
+		logger.Errorw("Failed to lookup provider resource", "error", err)
+		return err
+	}
+
+	providerProto, ok := provider.Proto().(*pb.Provider)
+	if !ok {
+		logger.Errorw("Provider resource is not a provider proto")
+		return fferr.NewInternalErrorf("provider resource is not a provider proto")
+	}
+
+	localizer, err := GetLocalizer(pt.Type(providerProto.GetType()), providerProto.GetSerializedConfig())
+	if err != nil {
+		logger.Warnw("Failed to get localizer, offline store locations will not be updated", "error", err)
+		return nil
+	}
+
+	// Localize the feature variant and create a location entry
+	location, err := localizer.LocalizeFeatureVariant(fv)
+	if err != nil {
+		logger.Errorw("Failed to localize transformation location", "provider", providerName, "error", err)
+		return err
+	}
+
+	locProto := location.Proto()
+	if locProto != nil {
+		fv.OfflineStoreLocations = append(fv.GetOfflineStoreLocations(), location.Proto())
+	} else {
+		logger.Errorw("Location proto is nil, not adding to offline store locations")
+		return nil
+	}
+
+	logger.Debug("Offline store locations have been updated")
+	return nil
+}
+
 // addTransformationLocation adds the location to the transformation field of the source variant given the client
 // isn't capable of populating the location field properly. Given metadata is the source of truth and "upstream"
 func (serv *MetadataServer) addTransformationLocation(
@@ -2829,7 +3023,7 @@ func (serv *MetadataServer) addTransformationLocation(
 		return err
 	}
 	logger.Debug("Localizing source")
-	location, err := localizer.Localize(sv)
+	location, err := localizer.LocalizeSourceVariant(sv)
 	if err != nil {
 		logger.Errorw("Failed to localize transformation location", "provider", providerName, "error", err)
 		return err
@@ -2891,6 +3085,31 @@ func (serv *MetadataServer) GetSourceVariants(stream pb.Metadata_GetSourceVarian
 		}
 		return stream.Send(sv)
 	})
+}
+
+func (serv *MetadataServer) featureVariantBackwardsCompatibility(ctx context.Context, fv *pb.FeatureVariant, save bool) error {
+	logger := serv.Logger.With("feature_name", fv.Name, "feature_variant", fv.Variant)
+	logger.Debug("Checking feature variant for backwards compatibility")
+	switch fv.GetMode() {
+	case pb.ComputationMode_PRECOMPUTED:
+		if len(fv.GetOfflineStoreLocations()) == 0 {
+			logger.Debug("Feature variant has no offline store locations")
+			if err := serv.addFeatureProviderAndLocation(ctx, fv, logger); err != nil {
+				logger.Errorw("failed to add feature location", "error", err)
+				return err
+			}
+			resId := ResourceID{Name: fv.Name, Variant: fv.Variant, Type: FEATURE_VARIANT}
+			if save {
+				if err := serv.lookup.Set(ctx, resId, &featureVariantResource{fv}); err != nil {
+					logger.Errorw("Failed to set source variant", "id", resId, "error", err)
+					return err
+				}
+			}
+		}
+	default:
+		logger.Debug("Feature variant is not precomputed not backfilling")
+	}
+	return nil
 }
 
 // sourceVariantBackwardsCompatibility is an update operation that supports backwards compatibility for source variants that

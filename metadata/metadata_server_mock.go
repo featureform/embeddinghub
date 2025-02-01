@@ -10,10 +10,12 @@ package metadata
 import (
 	"context"
 	"io"
+	"time"
 
 	pb "github.com/featureform/metadata/proto"
 	pc "github.com/featureform/provider/provider_config"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockSourceClient struct {
@@ -35,12 +37,13 @@ func (x *mockSourceClient) CloseSend() error {
 }
 
 func (x *mockSourceClient) Recv() (sv *pb.SourceVariant, e error) {
-	pbsv := &pb.SourceVariant{Name: "test.name",
-		Variant:      "test.variant",
-		Owner:        "test.owner",
-		Provider:     "UNIT_TEST",
+	pbsv := &pb.SourceVariant{Name: "transactions",
+		Variant:      "2024-09-06t21-07-40",
+		Owner:        "anthony@featureform.com",
+		Provider:     "postgres",
 		Definition:   &pb.SourceVariant_PrimaryData{},
 		Table:        "test.table",
+		Status:       &pb.ResourceStatus{Status: pb.ResourceStatus_READY},
 		Trainingsets: []*pb.NameVariant{},
 		Features:     []*pb.NameVariant{},
 		Labels:       []*pb.NameVariant{},
@@ -101,6 +104,122 @@ func (x *mockProviderClient) Recv() (pv *pb.Provider, e error) {
 	}
 }
 
+type mockFeatureClient struct {
+	grpc.ClientStream
+	ctx  context.Context
+	sent bool
+}
+
+func (x *mockFeatureClient) Send(*pb.NameVariantRequest) error {
+	return nil
+}
+
+func (x *mockFeatureClient) Context() context.Context {
+	return x.ctx
+}
+
+func (x *mockFeatureClient) CloseSend() error {
+	return nil
+}
+
+func (x *mockFeatureClient) Recv() (fv *pb.FeatureVariant, e error) {
+	pbfv := &pb.FeatureVariant{Name: "avg_transactions",
+		Variant:      "2024-08-21t18-16-06",
+		Owner:        "anthony@featureform.com",
+		Provider:     "latestv1test-redis",
+		Entity:       "test.entity",
+		Status:       &pb.ResourceStatus{Status: pb.ResourceStatus_FAILED},
+		Source:       &pb.NameVariant{Name: "average_user_transaction", Variant: "2024-08-21t18-16-06"},
+		Location:     &pb.FeatureVariant_Columns{Columns: &pb.Columns{Entity: "user_id", Value: "avg_transaction_amt"}},
+		Trainingsets: []*pb.NameVariant{},
+		Schedule:     "test.schedule",
+		Tags:         &pb.Tags{Tag: []string{"testV1", "testV1-READY"}},
+		Properties:   &pb.Properties{},
+	}
+	if !x.sent {
+		x.sent = true
+		return pbfv, nil
+	} else {
+		return nil, io.EOF
+	}
+}
+
+type mockLabelClient struct {
+	grpc.ClientStream
+	ctx  context.Context
+	sent bool
+}
+
+func (x *mockLabelClient) Send(*pb.NameVariantRequest) error {
+	return nil
+}
+
+func (x *mockLabelClient) Context() context.Context {
+	return x.ctx
+}
+
+func (x *mockLabelClient) CloseSend() error {
+	return nil
+}
+
+func (x *mockLabelClient) Recv() (fv *pb.LabelVariant, e error) {
+	pblv := &pb.LabelVariant{Name: "trans_label",
+		Variant:      "2024-09-27t15-58-54",
+		Owner:        "riddhi@featureform.com",
+		Provider:     "postgres-quickstart",
+		Source:       &pb.NameVariant{Name: "transaction", Variant: "variant_447335"},
+		Location:     &pb.LabelVariant_Columns{Columns: &pb.Columns{Entity: "customerid", Value: "custlocation", Ts: "timestamp"}},
+		Entity:       "test.entity",
+		Trainingsets: []*pb.NameVariant{},
+		Tags:         &pb.Tags{Tag: []string{"testV1", "testV1-READY"}},
+		Properties:   &pb.Properties{},
+	}
+	if !x.sent {
+		x.sent = true
+		return pblv, nil
+	} else {
+		return nil, io.EOF
+	}
+}
+
+type mockTrainingSetClient struct {
+	grpc.ClientStream
+	ctx  context.Context
+	sent bool
+}
+
+func (x *mockTrainingSetClient) Send(*pb.NameVariantRequest) error {
+	return nil
+}
+
+func (x *mockTrainingSetClient) Context() context.Context {
+	return x.ctx
+}
+
+func (x *mockTrainingSetClient) CloseSend() error {
+	return nil
+}
+
+func (x *mockTrainingSetClient) Recv() (fv *pb.TrainingSetVariant, e error) {
+	pbtsv := &pb.TrainingSetVariant{Name: "my_training_set",
+		Variant:    "2024-10-23t17-36-17",
+		Owner:      "riddhi@featureform.com",
+		Provider:   "postgres-quickstart",
+		Created:    &timestamppb.Timestamp{Seconds: time.Now().Unix()},
+		Label:      &pb.NameVariant{Name: "f7_label", Variant: "label_variant"},
+		Status:     &pb.ResourceStatus{Status: pb.ResourceStatus_READY},
+		Schedule:   "test.schedule",
+		Tags:       &pb.Tags{Tag: []string{"dummyTag"}},
+		Properties: &pb.Properties{},
+	}
+	if !x.sent {
+		x.sent = true
+		return pbtsv, nil
+	} else {
+		return nil, io.EOF
+	}
+}
+
 type MetadataServerMock struct {
 }
 
@@ -123,7 +242,10 @@ func (MetadataServerMock) GetFeatures(ctx context.Context, opts ...grpc.CallOpti
 }
 
 func (MetadataServerMock) GetFeatureVariants(ctx context.Context, opts ...grpc.CallOption) (pb.Metadata_GetFeatureVariantsClient, error) {
-	return nil, nil
+	return &mockFeatureClient{
+		ctx:  context.Background(),
+		sent: false,
+	}, nil
 }
 func (MetadataServerMock) ListLabels(ctx context.Context, in *pb.ListRequest, opts ...grpc.CallOption) (pb.Metadata_ListLabelsClient, error) {
 	return nil, nil
@@ -135,7 +257,10 @@ func (MetadataServerMock) GetLabels(ctx context.Context, opts ...grpc.CallOption
 	return nil, nil
 }
 func (MetadataServerMock) GetLabelVariants(ctx context.Context, opts ...grpc.CallOption) (pb.Metadata_GetLabelVariantsClient, error) {
-	return nil, nil
+	return &mockLabelClient{
+		ctx:  context.Background(),
+		sent: false,
+	}, nil
 }
 func (MetadataServerMock) ListTrainingSets(ctx context.Context, in *pb.ListRequest, opts ...grpc.CallOption) (pb.Metadata_ListTrainingSetsClient, error) {
 	return nil, nil
@@ -147,7 +272,10 @@ func (MetadataServerMock) GetTrainingSets(ctx context.Context, opts ...grpc.Call
 	return nil, nil
 }
 func (MetadataServerMock) GetTrainingSetVariants(ctx context.Context, opts ...grpc.CallOption) (pb.Metadata_GetTrainingSetVariantsClient, error) {
-	return nil, nil
+	return &mockTrainingSetClient{
+		ctx:  context.Background(),
+		sent: false,
+	}, nil
 }
 func (MetadataServerMock) ListSources(ctx context.Context, in *pb.ListRequest, opts ...grpc.CallOption) (pb.Metadata_ListSourcesClient, error) {
 	return nil, nil

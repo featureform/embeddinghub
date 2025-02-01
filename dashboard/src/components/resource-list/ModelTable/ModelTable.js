@@ -3,11 +3,10 @@ import { useRouter } from 'next/router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDataAPI } from '../../../hooks/dataAPI';
 import { isMatchingDefault } from '../DatasetTable/DatasetTable';
-import { ConnectionSvg } from '../icons/Connections';
 import NoDataMessage from '../NoDataMessage';
 import FilterPanel from './FilterPanel';
 import BaseFilterPanel from '../BaseFilterPanel';
-import { MainContainer, GridContainer, StyledDataGrid, STATUS_COLORS } from '../BaseColumnTable';
+import { MainContainer, GridContainer, StyledDataGrid } from '../BaseColumnTable';
 
 export const model_columns = [
   {
@@ -48,29 +47,6 @@ export const model_columns = [
           <div style={{ display: 'flex' }}>
             <Typography variant='body2'>
               {sanitizeTags(row?.tags)}
-            </Typography>
-          </div>
-      );
-    },
-  },
-  {
-    field: 'status',
-    headerName: 'Status',
-    flex: 0,
-    width: 350,
-    editable: false,
-    sortable: false,
-    filterable: false,
-    renderCell: function ({ row }) {
-      let result = STATUS_COLORS.ERROR;
-      if (row?.status && row?.status === 'CREATED') {
-        result = STATUS_COLORS.READY;
-      }
-      return (
-          <div style={{ display: 'flex' }}>
-            <ConnectionSvg fill={result} height='20' width='20' />
-            <Typography variant='body2' sx={{ marginLeft: 1 }}>
-              {row?.status}
             </Typography>
           </div>
       );

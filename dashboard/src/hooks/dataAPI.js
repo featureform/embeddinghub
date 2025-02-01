@@ -278,6 +278,26 @@ export function useDataAPI() {
     return result;
   };
 
+  const searchResources = async (query) => {
+    const result = await fetch(
+      `${API_URL}/data/search?q=${query}`, 
+      {
+      cache: 'no-store',
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+      .then((res) => res.json())
+      .catch((error) => {
+        console.error('Error fetching search results from server: ', error);
+
+        return [];
+      });
+
+    return result;
+  };
+        
   return {
     getTags,
     postTags,
@@ -291,6 +311,7 @@ export function useDataAPI() {
     getLabelVariants,
     getTrainingSetVariants,
     getEntities,
+    searchResources,
     getModels,
   };
 }

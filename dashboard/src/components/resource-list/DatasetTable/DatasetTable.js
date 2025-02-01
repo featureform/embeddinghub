@@ -33,7 +33,7 @@ export const dataset_columns = [
   },
   {
     field: 'name',
-    headerName: 'Name (Variant)',
+    headerName: 'Name (Latest Variant)',
     width: 200,
     editable: false,
     sortable: false,

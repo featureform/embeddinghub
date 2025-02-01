@@ -29,7 +29,7 @@ export const feature_variant_columns = [
   },
   {
     field: 'name',
-    headerName: 'Name (Variant)',
+    headerName: 'Name (Latest Variant)',
     flex: 1,
     editable: false,
     sortable: false,

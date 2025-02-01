@@ -3,11 +3,10 @@ import { useRouter } from 'next/router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDataAPI } from '../../../hooks/dataAPI';
 import { isMatchingDefault } from '../DatasetTable/DatasetTable';
-import { ConnectionSvg } from '../icons/Connections';
 import NoDataMessage from '../NoDataMessage';
 import FilterPanel from './FilterPanel';
 import BaseFilterPanel from '../BaseFilterPanel';
-import { MainContainer, GridContainer, StyledDataGrid , STATUS_COLORS} from '../BaseColumnTable';
+import { MainContainer, GridContainer, StyledDataGrid } from '../BaseColumnTable';
 
 export const entity_columns = [
   {
@@ -66,31 +65,6 @@ export const entity_columns = [
         <Typography variant='body1' sx={{ marginLeft: 1 }}>
           {labelCount}
         </Typography>
-      );
-    },
-  },
-  {
-    field: 'status',
-    headerName: 'Status',
-    flex: 1,
-    editable: false,
-    sortable: false,
-    filterable: false,
-    renderCell: function (params) {
-      let result = STATUS_COLORS.ERROR;
-      if (
-        params?.row?.status &&
-        ['READY', 'CREATED'].includes(params?.row?.status)
-      ) {
-        result = STATUS_COLORS.READY;
-      }
-      return (
-        <div style={{ display: 'flex' }}>
-          <ConnectionSvg fill={result} height='20' width='20' />
-          <Typography variant='body1' sx={{ marginLeft: 1 }}>
-            {params?.row?.status}
-          </Typography>
-        </div>
       );
     },
   },

@@ -15,13 +15,14 @@ import {
 } from '@mui/material';
 import Checkbox from '@mui/material/Checkbox';
 import { DataGrid } from '@mui/x-data-grid';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function VariantView({
   variantList = [],
   handleClose = () => null,
   handleSelect = () => null,
   handleSearch = () => null,
+  initialChecked = false,
 }) {
   const columns = [
     {
@@ -62,11 +63,24 @@ export default function VariantView({
       sortable: false,
       filterable: false,
     },
+    {
+      field: 'status',
+      headerName: 'Status',
+      flex: 1,
+      width: 125,
+      editable: false,
+      sortable: false,
+      filterable: false,
+    },
   ];
-
   const ENTER_KEY = 'Enter';
   const [searchQuery, setSearchQuery] = useState('');
-  const [checked, setChecked] = useState(false);
+  const [checked, setChecked] = useState(initialChecked);
+
+  // Sets the initial value for the variant checkbox 
+  useEffect(() => {
+    doSearch(searchQuery, checked);
+  }, []);  
 
   const handleRowSelect = (selectedRow) => {
     if (selectedRow?.row) {
@@ -74,6 +88,7 @@ export default function VariantView({
     }
   };
 
+  // doSearch and doCheckbox are subsequently fired when the user interacts with the search bar or checkbox
   const doSearch = (searchText = '', checkValue = checked) => {
     handleSearch(searchText, checkValue);
   };

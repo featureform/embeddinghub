@@ -1,5 +1,5 @@
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import {STATUS_OPTIONS, 
+import {
   StyledAccordion, 
   filterItemTxtSize, 
   StyledFormControlLabel,
@@ -20,40 +20,11 @@ export const FilterPanel = ({
   features = [],
   onCheckBoxChange = () => null,
 }) => {
-  const [statusesExpanded, setStatusesExpanded] = useState(true);
   const [tagsExpanded, setTagsExpanded] = useState(false);
   const [labelsExpanded, setLabelsExpanded] = useState(false);
   const [featuresExpanded, setFeaturesExpanded] = useState(false);
   return (
     <>
-      <StyledAccordion
-        expanded={statusesExpanded}
-        onChange={() => setStatusesExpanded(!statusesExpanded)}
-        disableGutters={true}
-      >
-        <AccordionSummary expandIcon={<ArrowDropDownIcon />}>
-          <Typography sx={{ fontSize: filterItemTxtSize }}>Status</Typography>
-        </AccordionSummary>
-        <StyledDivider />
-        <AccordionDetails>
-          <FormGroup>
-            {STATUS_OPTIONS.map((status) => (
-              <StyledFormControlLabel
-                key={status.key}
-                control={
-                  <Checkbox
-                    checked={filters.Statuses?.includes(status.value) || false}
-                    onChange={() => onCheckBoxChange('Statuses', status.value)}
-                    sx={{ '& .MuiSvgIcon-root': { fontSize: 25 } }}
-                  />
-                }
-                label={status.key}
-              />
-            ))}
-          </FormGroup>
-        </AccordionDetails>
-      </StyledAccordion>
-
       <StyledAccordion
         expanded={tagsExpanded}
         onChange={() => setTagsExpanded(!tagsExpanded)}

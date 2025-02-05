@@ -26,6 +26,7 @@ COPY ./lib/ ./lib/
 COPY ./metadata/search/ ./metadata/search/
 COPY ./metadata/proto/ ./metadata/proto/
 COPY ./metadata/equivalence/ ./metadata/equivalence/
+COPY ./metadata/common/ ./metadata/common/
 COPY ./proto/ ./proto/
 COPY ./helpers/ ./helpers/
 COPY ./logging/ ./logging/

@@ -43,6 +43,7 @@ COPY ./provider/ ./provider/
 COPY ./metadata/dashboard/ ./metadata/dashboard/
 COPY ./metadata/search/ ./metadata/search/
 COPY ./metadata/equivalence/ ./metadata/equivalence/
+COPY ./metadata/common/ ./metadata/common/
 COPY ./provider/provider_config/ ./provider/provider_config/
 COPY ./provider/provider_type/ ./provider/provider_type/
 COPY ./config/ ./config/

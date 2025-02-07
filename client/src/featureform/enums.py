@@ -182,6 +182,7 @@ class FilePrefix(Enum):
 class FileFormat(str, Enum):
     CSV = "csv"
     PARQUET = "parquet"
+    JSONL = "jsonl"
 
     @classmethod
     def is_supported(cls, file_path: str) -> bool:

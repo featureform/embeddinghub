@@ -41,6 +41,7 @@ def test_validate_file_scheme(store_type, file_path):
         ("s3a://bucket/path/to/file.csv", "csv"),
         ("s3://bucket/path/to/directory/part-0000.parquet", "parquet"),
         ("s3://bucket/path/to/directory", "parquet"),
+        ("s3://bucket/path/to/file.jsonl", "jsonl"),
     ],
 )
 def test_get_format(location, expected_format):

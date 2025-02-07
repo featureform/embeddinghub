@@ -1,0 +1,10 @@
+{"TransactionID":"T1","CustomerID":"C5841053","CustomerDOB":"10/1/94","CustLocation":"JAMSHEDPUR","CustAccountBalance":17819.05,"TransactionAmount":25,"Timestamp":"2022-04-09 11:33:09","IsFraud":false}
+{"TransactionID":"T2","CustomerID":"C2142763","CustomerDOB":"4/4/57","CustLocation":"JHAJJAR","CustAccountBalance":2270.69,"TransactionAmount":27999,"Timestamp":"2022-03-27 01:04:21","IsFraud":false}
+{"TransactionID":"T3","CustomerID":"C4417068","CustomerDOB":"26/11/96","CustLocation":"MUMBAI","CustAccountBalance":17874.44,"TransactionAmount":459,"Timestamp":"2022-04-07 00:48:14","IsFraud":false}
+{"TransactionID":"T4","CustomerID":"C5342380","CustomerDOB":"14/9/73","CustLocation":"MUMBAI","CustAccountBalance":866503.21,"TransactionAmount":2060,"Timestamp":"2022-04-14 07:56:59","IsFraud":true}
+{"TransactionID":"T5","CustomerID":"C9031234","CustomerDOB":"24/3/88","CustLocation":"NAVI MUMBAI","CustAccountBalance":6714.43,"TransactionAmount":1762.5,"Timestamp":"2022-04-13 07:39:19","IsFraud":false}
+{"TransactionID":"T6","CustomerID":"C1536588","CustomerDOB":"8/10/72","CustLocation":"ITANAGAR","CustAccountBalance":53609.2,"TransactionAmount":676,"Timestamp":"2022-03-26 17:02:51","IsFraud":true}
+{"TransactionID":"T7","CustomerID":"C7126560","CustomerDOB":"26/1/92","CustLocation":"MUMBAI","CustAccountBalance":973.46,"TransactionAmount":566,"Timestamp":"2022-03-29 08:00:09","IsFraud":true}
+{"TransactionID":"T8","CustomerID":"C1220223","CustomerDOB":"27/1/82","CustLocation":"MUMBAI","CustAccountBalance":95075.54,"TransactionAmount":148,"Timestamp":"2022-04-12 07:01:02","IsFraud":true}
+{"TransactionID":"T9","CustomerID":"C8536061","CustomerDOB":"19/4/88","CustLocation":"GURGAON","CustAccountBalance":14906.96,"TransactionAmount":833,"Timestamp":"2022-04-10 20:43:10","IsFraud":true}
+{"TransactionID":"T5607","CustomerID":"C1410926","CustomerDOB":"17/10/78","CustLocation":"GURGAON","CustAccountBalance":438997.69,"TransactionAmount":5000,"Timestamp":"2022-03-27 20:49:27","IsFraud":false}

@@ -649,14 +649,21 @@ class Dataset:
     def _get_spark_dataframe(self, spark, file_format, location):
         if file_format not in FileFormat.supported_formats():
             raise Exception(
-                f"file type '{file_format}' is not supported. Please use 'csv' or 'parquet'"
+                f"file type '{file_format}' is not supported. Please use 'csv', 'parquet', or 'jsonl'"
             )
 
         try:
             df = (
                 spark.read.option("header", "true")
                 .option("recursiveFileLookup", "true")
-                .format(file_format)
+            )
+
+            if file_format == "jsonl":
+                df = df.option("multiline", "true")
+                file_format = "json"
+
+            df = (
+                df.format(file_format)
                 .load(location)
             )
 

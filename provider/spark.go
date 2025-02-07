@@ -975,6 +975,22 @@ func createSourceInfo(mapping []SourceMapping, logger logging.Logger) ([]sparkli
 				TimestampColumnName: m.TimestampColumnName,
 			}
 
+		case pt.BigQueryOffline:
+			var config pc.BigQueryConfig
+			if err := config.Deserialize(m.ProviderConfig); err != nil {
+				logger.Errorw("Error deserializing BigQuery config", "error", err)
+				return nil, err
+			}
+
+			source = sparklib.SourceInfo{
+				Location:            m.Source,
+				LocationType:        string(m.Location.Type()),
+				Provider:            pt.BigQueryOffline,
+				Database:            config.ProjectId,
+				Schema:              config.DatasetId,
+				TimestampColumnName: m.TimestampColumnName,
+			}
+
 		default:
 			logger.Errorw("Unsupported source type", "source_type", m.ProviderType)
 			return nil, fferr.NewInternalErrorf("unsupported source type: %s", m.ProviderType.String())
@@ -1054,6 +1070,33 @@ func (spark *SparkOfflineStore) prepareQueryForSpark(query string, mapping []Sou
 				Location:            sqlLocation.GetTable(),
 				LocationType:        string(m.Location.Type()),
 				Provider:            pt.SnowflakeOffline,
+				Database:            database,
+				Schema:              schema,
+				TimestampColumnName: m.TimestampColumnName,
+			}
+			spark.Logger.Debugw("Source mapping in prepareQueryForSpark", "source", source)
+		case pt.BigQueryOffline:
+			config := pc.BigQueryConfig{}
+			if err := config.Deserialize(m.ProviderConfig); err != nil {
+				spark.Logger.Errorw("Error deserializing bigquery sparkConfig", "error", err)
+				return "", nil, err
+			}
+			sqlLocation, ok := m.Location.(*pl.SQLLocation)
+			if !ok {
+				return "", nil, fferr.NewInternalErrorf("location for BigQueryOffline source mapping is not a SQLLocation: %T", m.Location)
+			}
+			database := config.ProjectId
+			if sqlLocation.GetDatabase() != "" {
+				database = sqlLocation.GetDatabase()
+			}
+			schema := config.DatasetId
+			if sqlLocation.GetSchema() != "" {
+				schema = sqlLocation.GetSchema()
+			}
+			source = sparklib.SourceInfo{
+				Location:            sqlLocation.GetTable(),
+				LocationType:        string(m.Location.Type()),
+				Provider:            pt.BigQueryOffline,
 				Database:            database,
 				Schema:              schema,
 				TimestampColumnName: m.TimestampColumnName,
@@ -1537,6 +1580,24 @@ func sparkTrainingSet(def TrainingSetDef, spark *SparkOfflineStore, isUpdate boo
 		labelSchema = ResourceSchema{
 			EntityMappings: *def.LabelSourceMapping.EntityMappings,
 		}
+	case pt.BigQueryOffline:
+		config := pc.BigQueryConfig{}
+		if err := config.Deserialize(def.LabelSourceMapping.ProviderConfig); err != nil {
+			logger.Errorw("Error deserializing snowflake config", "error", err)
+			return err
+		}
+		labelPySparkSource = sparklib.SourceInfo{
+			Location:     def.LabelSourceMapping.Source,
+			LocationType: string(pl.SQLLocationType),
+			Provider:     def.LabelSourceMapping.ProviderType,
+			Database:     config.ProjectId,
+			Schema:       config.DatasetId,
+		}
+		labelSchema = ResourceSchema{
+			Entity: "entity",
+			Value:  "value",
+			TS:     "ts",
+		}
 	default:
 		logger.Errorw("Unsupported label provider", "provider", def.LabelSourceMapping.ProviderType)
 		return fferr.NewInternalErrorf("unsupported label provider: %s", def.LabelSourceMapping.ProviderType.String())
@@ -1568,6 +1629,13 @@ func sparkTrainingSet(def TrainingSetDef, spark *SparkOfflineStore, isUpdate boo
 				Value:          "value",
 				TS:             "ts",
 				EntityMappings: *def.FeatureSourceMappings[idx].EntityMappings,
+			}
+		case pt.BigQueryOffline:
+			featureSourceLocation = pl.NewSQLLocation(def.FeatureSourceMappings[idx].Source)
+			featureSchema = ResourceSchema{
+				Entity: "entity",
+				Value:  "value",
+				TS:     "ts",
 			}
 		default:
 			logger.Errorw("Unsupported feature provider", "provider", def.FeatureSourceMappings[idx].ProviderType)

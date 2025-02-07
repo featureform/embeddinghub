@@ -1002,6 +1002,33 @@ def get_source_df(source, credentials, is_update, spark):
 
         timestamp_column = source.get("timestampColumnName")
         return source_df
+    elif location_type == "sql" and source.get("provider") == "BIGQUERY_OFFLINE":
+        print(f"Reading Bigquery table: {location}")
+        # Validate required credentials
+        required_creds = ["bqProjectId", "bqDatasetId", "bqCreds"]
+        missing_creds = [cred for cred in required_creds if not credentials.get(cred)]
+        if missing_creds:
+            raise ValueError(f"Missing required BigQuery credentials: {', '.join(missing_creds)}")
+
+        projId = credentials.get("bqProjectId")
+        datasetId = credentials.get("bqDatasetId")
+
+        # Validate table identifier format
+        if not location or not location.strip():
+            raise ValueError("BigQuery table name cannot be empty")
+
+        options = {
+            "credentials": credentials.get("bqCreds"),
+            "parentProject": projId,
+            "viewsEnabled": "true",
+            "table": f"{projId}.{datasetId}.{location}",
+        }
+        try:
+            source_df = spark.read.format("bigquery").options(**options).load()
+        except Exception as e:
+            raise Exception(f"Failed to read from BigQuery table: {str(e)}")
+        timestamp_column = source.get("timestampColumnName")
+        return source_df
     elif location_type == "filestore":
         file_extension = Path(location).suffix
         is_directory = file_extension == ""

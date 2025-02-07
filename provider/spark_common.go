@@ -117,6 +117,14 @@ func (def sparkScriptCommandDef) PrepareCommand(logger logging.Logger) (*spark.C
 		)
 		return nil, err
 	}
+	bqConfig, err := getBigQueryConfigFromSourceMapping(def.Mappings)
+	if err != nil {
+		logger.Errorw(
+			"Could not get BigQuery config from source mapping",
+			"error", err,
+		)
+		return nil, err
+	}
 	sparkScriptRemotePath, err := sparkPythonFileURI(def.Store, logger)
 	if err != nil {
 		logger.Errorw("Failed to get python file URI", "error", err)
@@ -142,6 +150,7 @@ func (def sparkScriptCommandDef) PrepareCommand(logger logging.Logger) (*spark.C
 				Output:          def.OutputLocation,
 				DeployMode:      def.DeployMode,
 				SnowflakeConfig: snowflakeConfig,
+				BigQueryConfig:  bqConfig,
 				Store:           def.Store,
 			},
 		),
@@ -193,6 +202,7 @@ type sparkCoreConfigsArgs struct {
 	Output          pl.Location
 	DeployMode      types.SparkDeployMode
 	SnowflakeConfig *pc.SnowflakeConfig
+	BigQueryConfig  *pc.BigQueryConfig
 	Store           SparkFileStoreV2
 }
 
@@ -200,6 +210,9 @@ func sparkCoreConfigs(args sparkCoreConfigsArgs) spark.Configs {
 	configs := spark.Configs{
 		spark.SnowflakeFlags{
 			Config: args.SnowflakeConfig,
+		},
+		spark.BigQueryFlags{
+			Config: args.BigQueryConfig,
 		},
 		spark.JobTypeFlag{
 			Type: args.JobType,
@@ -311,6 +324,20 @@ func writeSubmitParamsToFileStore(query string, sources []spark.SourceInfo, stor
 	}
 
 	return paramsPath, nil
+}
+
+func getBigQueryConfigFromSourceMapping(mappings []SourceMapping) (*pc.BigQueryConfig, error) {
+	var bqConfig *pc.BigQueryConfig
+	for _, mapping := range mappings {
+		if mapping.ProviderType == pt.BigQueryOffline {
+			bqConfig = &pc.BigQueryConfig{}
+			if err := bqConfig.Deserialize(mapping.ProviderConfig); err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	return bqConfig, nil
 }
 
 func getSnowflakeConfigFromSourceMapping(mappings []SourceMapping) (*pc.SnowflakeConfig, error) {

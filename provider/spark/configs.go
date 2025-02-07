@@ -9,6 +9,7 @@ package spark
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -587,6 +588,47 @@ func (flag DeployFlag) ApplyToDataprocServerless(batch *dataprocpb.Batch) {
 
 func (flag DeployFlag) ApplyToDatabricks(settings *dbjobs.Task) {
 	logging.GlobalLogger.Warnw("Unable to include deploy flag in databricks", "deploy-mode", flag.Mode.SparkArg())
+}
+
+type BigQueryFlags struct {
+	Config *pc.BigQueryConfig
+}
+
+func (args BigQueryFlags) SparkFlags() Flags {
+	if args.Config == nil {
+		logging.GlobalLogger.Debug(
+			"Not setting spark bigquery flags, bigquery config not set",
+		)
+		return Flags{}
+	}
+	bqCredBytes, err := json.Marshal(args.Config.Credentials)
+	if err != nil {
+		logging.GlobalLogger.Errorw(
+			"Failed to marshal bigquery credentials",
+		)
+		return Flags{}
+	}
+	flags := Flags{
+		CredFlag{
+			Key:   "bqProjectId",
+			Value: args.Config.ProjectId,
+		},
+		CredFlag{
+			Key:   "bqDatasetId",
+			Value: args.Config.DatasetId,
+		},
+		CredFlag{
+			Key:   "bqCreds",
+			Value: base64.StdEncoding.EncodeToString(bqCredBytes),
+		},
+	}
+	return flags
+}
+
+func (args BigQueryFlags) Redacted() Config {
+	return BigQueryFlags{
+		Config: args.Config.Redacted(),
+	}
 }
 
 type SnowflakeFlags struct {

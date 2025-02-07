@@ -11,8 +11,8 @@ import (
 	"encoding/json"
 
 	"github.com/featureform/fferr"
-
 	ss "github.com/featureform/helpers/stringset"
+	"github.com/featureform/logging/redacted"
 )
 
 type BigQueryConfig struct {
@@ -45,4 +45,19 @@ func (bq BigQueryConfig) MutableFields() ss.StringSet {
 
 func (a BigQueryConfig) DifferingFields(b BigQueryConfig) (ss.StringSet, error) {
 	return differingFields(a, b)
+}
+
+func (bq *BigQueryConfig) Redacted() *BigQueryConfig {
+	if bq == nil {
+		return nil
+	}
+	redactedCreds := make(map[string]interface{})
+	for k, _ := range bq.Credentials {
+		redactedCreds[k] = redacted.String
+	}
+	return &BigQueryConfig{
+		ProjectId:   bq.ProjectId,
+		DatasetId:   bq.DatasetId,
+		Credentials: redactedCreds,
+	}
 }

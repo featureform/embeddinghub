@@ -238,11 +238,19 @@ func WaitForLock(t *testing.T, locker Locker, clock clockwork.FakeClock) {
 	for i := 0; i < 10; i++ {
 		go unlockGoRoutine(locker, <-lockChannel, errChan)
 	}
-
-	err := <-errChan
 	done <- struct{}{}
+	var firstErr error
+	for i := 0; i < 20; i++ {
+		// Wait for all unlocks and locks to happen
+		if err := <-errChan; err != nil {
+			t.Logf("Error in lock/unlock: %s", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
 
-	if err != nil {
-		t.Fatalf("Lock failed: %v", err)
+	if firstErr != nil {
+		t.Fatalf("Lock failed: %v", firstErr)
 	}
 }

@@ -30,7 +30,6 @@ import (
 	"github.com/databricks/databricks-sdk-go/apierr"
 	dbClient "github.com/databricks/databricks-sdk-go/client"
 	dbConfig "github.com/databricks/databricks-sdk-go/config"
-	"github.com/databricks/databricks-sdk-go/retries"
 	"github.com/databricks/databricks-sdk-go/service/compute"
 	dbfs "github.com/databricks/databricks-sdk-go/service/files"
 	"github.com/databricks/databricks-sdk-go/service/jobs"
@@ -143,26 +142,96 @@ func (db *DatabricksExecutor) RunSparkJob(cmd *spark.Command, store SparkFileSto
 		return wrapped
 	}
 
-	weekTimeout := retries.Timeout[jobs.Run](opts.MaxJobDuration)
-	_, err = db.client.Jobs.RunNowAndWait(ctx, jobs.RunNow{
-		JobId: jobToRun.JobId,
-	}, weekTimeout)
-	if err != nil {
-		logger.Errorw("job failed", "error", err)
-		errorMessage := err
-		if db.errorMessageClient != nil {
-			errorMessage, err = db.getErrorMessage(jobToRun.JobId)
-			if err != nil {
-				logger.Errorf("the '%v' job failed, could not get error message: %v\n", jobToRun.JobId, err)
-			}
+	if err := db.runSparkJobWithRetries(logger, jobToRun.JobId, opts.MaxJobDuration); err != nil {
+		details := []any {
+			"job_name", fmt.Sprintf("%s-%s", opts.JobName, id),
+			"job_id", fmt.Sprint(jobToRun.JobId),
+			"executor_type", "Databricks",
+			"store_type", store.Type(),
 		}
-		wrapped := fferr.NewExecutionError(pt.SparkOffline.String(), fmt.Errorf("job failed: %v", errorMessage))
-		wrapped.AddDetails("job_name", fmt.Sprintf("%s-%s", opts.JobName, id), "job_id", fmt.Sprint(jobToRun.JobId), "executor_type", "Databricks", "store_type", store.Type())
+		errDetails := append(details, "error", err)
+		logger.Errorw("job failed", errDetails...)
+		wrapped := fferr.NewExecutionError(
+			pt.SparkOffline.String(), fmt.Errorf("job failed: %v", err),
+		)
+		wrapped.AddDetails(details...)
 		wrapped.AddFixSuggestion("Check the cluster logs for more information")
 		return wrapped
 	}
-
 	return nil
+}
+
+
+func (db *DatabricksExecutor) runSparkJobWithRetries(
+	logger logging.Logger, jobId int64, maxWait time.Duration,
+) error {
+	ctx, cancel := context.WithTimeout(context.Background(), maxWait)
+	defer cancel()
+
+	handleErr := func(err error) error {
+		errorMessage := err
+		if db.errorMessageClient != nil {
+			errorMessage, err = db.getErrorMessage(jobId)
+			if err != nil {
+				logger.Errorf(
+					"the '%v' job failed, could not get error message: %v\n",
+					jobId, err,
+				)
+			}
+		}
+		if !db.isEphemeralError(errorMessage) {
+			// It we aren't sure if its ephemeral we shouldn't retry
+			errorMessage = re.Unrecoverable(errorMessage)
+		}
+		return errorMessage
+	}
+	return re.Do(
+		func() error {
+			deadline, has := ctx.Deadline()
+			if !has {
+				errMsg := "Avoiding infinite loop, refusing to run databricks command without context deadline"
+				logger.Error(errMsg)
+				return re.Unrecoverable(fferr.NewInternalErrorf(errMsg))
+			}
+			_, err := db.client.Jobs.RunNow(ctx, jobs.RunNow{
+				JobId: jobId,
+			})
+			if err != nil {
+				logger.Errorw("job failed to start", "error", err)
+				return handleErr(err)
+			}
+			timeoutLeft := time.Until(deadline)
+			_, waitErr := db.client.Jobs.WaitGetRunJobTerminatedOrSkipped(ctx, jobId, timeoutLeft, nil) 
+			if waitErr != nil {
+				logger.Errorw("job failed", "error", waitErr)
+				return handleErr(waitErr)
+			}
+			return nil
+		},
+		re.Context(ctx),                   // Stop retries when context times out
+		re.Attempts(0),                    // Infinite retries (until context cancels)
+		re.LastErrorOnly(true),            // Only return the last error
+		re.DelayType(re.CombineDelay(      // Use exponential backoff + jitter
+			re.BackOffDelay,               // Exponential backoff
+			re.RandomDelay,                // Random jitter
+		)),
+		re.Delay(5*time.Second),           // Initial delay of 5 seconds
+		re.MaxDelay(3*time.Minute),        // Cap max delay betweein iterations
+	)
+}
+
+func (db *DatabricksExecutor) isEphemeralError(err error) bool {
+	// This happens when the driver goes OOM sometimes
+	dbrixErr, isDbrixErr := err.(*apierr.APIError)
+	if !isDbrixErr {
+		return false
+	} else {
+		db.logger.Debugw("Checking if DBrix err is ephemeral", "dbrix-err", dbrixErr)
+	}
+	if strings.Contains(err.Error(), "not reach driver of cluster") {
+		return true
+	}
+	return false
 }
 
 func (db *DatabricksExecutor) InitializeExecutor(store SparkFileStoreV2) error {

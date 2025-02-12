@@ -53,7 +53,7 @@ const (
 
 const (
 	// Default timeout when waiting for dynamoDB tables to be ready
-	defaultDynamoTableTimeout = 30 * time.Second
+	defaultDynamoTableTimeout = 3 * time.Minute
 	maxRetries                = 5
 )
 

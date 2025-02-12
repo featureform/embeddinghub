@@ -438,7 +438,10 @@ func (store *SparkOfflineStore) CheckHealth() (bool, error) {
 		return true, nil
 	}
 	logger.Info("Running spark offline store health check")
-	healthCheckPath, err := store.Store.CreateFilePath("featureform/HealthCheck/health_check.csv", false)
+	dirStr := uuid.NewString()
+	csvPath := fmt.Sprintf("featureform/HealthCheck/%s/health_check.csv", dirStr)
+	outPath := fmt.Sprintf("featureform/HealthCheck/%s/health_check_out", dirStr)
+	healthCheckPath, err := store.Store.CreateFilePath(csvPath, false)
 	if err != nil {
 		wrapped := fferr.NewInternalError(err)
 		wrapped.AddDetails("store_type", store.Type(), "action", "file_path_creation")
@@ -453,13 +456,20 @@ func (store *SparkOfflineStore) CheckHealth() (bool, error) {
 		logger.Error(errMsg)
 		return false, fferr.NewInternalErrorf(errMsg)
 	}
+	logger.Info("Writing health check CSV", "health-check-path-input-path", csvPath)
 	if err := store.Store.Write(healthCheckPath, csvBytes); err != nil {
 		wrapped := fferr.NewConnectionError(store.Type().String(), err)
 		wrapped.AddDetail("action", "write")
 		logger.Errorw("Failed to write to health check path", "err", wrapped)
 		return false, wrapped
 	}
-	healthCheckOutPath, err := store.Store.CreateFilePath("featureform/HealthCheck/health_check_out", true)
+	defer func() {
+		logger.LogIfErr(
+			fmt.Sprintf("Failed to delete health check path: %s", healthCheckPath.ToURI()),
+			store.Store.Delete(healthCheckPath),
+		)
+	}()
+	healthCheckOutPath, err := store.Store.CreateFilePath(outPath, true)
 	if err != nil {
 		wrapped := fferr.NewInternalError(err)
 		wrapped.AddDetails("store_type", store.Type(), "action", "file_path_creation")
@@ -491,6 +501,13 @@ func (store *SparkOfflineStore) CheckHealth() (bool, error) {
 		MaxJobDuration: 30 * time.Minute,
 		JobName:        "featureform-health-check",
 	}
+	defer func() {
+		logger.LogIfErr(
+			fmt.Sprintf("Failed to delete health check out path: %s", healthCheckOutPath.ToURI()),
+			store.Store.Delete(healthCheckOutPath),
+		)
+	}()
+	logger.Info("Running health check task on Spark", "health-check-output-path", outPath)
 	if err := store.Executor.RunSparkJob(args, store.Store, opts, nil); err != nil {
 		wrapped := fferr.NewConnectionError(store.Type().String(), err)
 		wrapped.AddDetail("action", "job_submission")

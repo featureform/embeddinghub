@@ -1,0 +1,58 @@
+name: Deploy OSS Cluster
+
+defaults:
+  run:
+    working-directory: ./
+
+concurrency:
+  group: deploy-oss-to-cluster
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster:
+        description: "The name of the EKS cluster to deploy to"
+        type: string
+        required: true
+        default: "internal-sandbox-cluster"
+      region:
+        description: "The region that the EKS cluster resides in"
+        type: string
+        required: true
+        default: "us-east-1"
+      namespace:
+        description: "The namespace to deploy Featureform to"
+        type: string
+        required: true
+        default: "oss"
+
+jobs:
+  deploy:
+    name: Deploy OSS Cluster
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 15
+    environment: Integration testing
+    steps:
+      - name: Install CLI tools
+        uses: alexellis/arkade-get@master
+        with:
+          kubectl: latest
+          eksctl: latest
+          helm: latest
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ github.event.inputs.region }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Add kubeconfig
+        run: aws eks update-kubeconfig --name ${{ github.event.inputs.cluster }} --region ${{ github.event.inputs.region }}
+
+      - name: Update cluster
+        run: helm upgrade --install --namespace ${{ github.event.inputs.namespace }} --create-namespace featureform ./charts/featureform/ -f charts/featureform/values.yaml -f charts/featureform/values-staging.yaml

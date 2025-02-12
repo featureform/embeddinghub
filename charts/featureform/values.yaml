@@ -15,7 +15,7 @@ hostname: "localhost"
 # Override chart version. This value correlates to the docker image tags
 versionOverride: "0.0.0"
 
-repository: "featureformenterprise"
+repository: "featureformcom"
 
 # Global pull policy
 pullPolicy: "Always"

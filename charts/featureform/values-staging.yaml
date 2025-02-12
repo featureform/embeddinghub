@@ -1,0 +1,35 @@
+# These are specific staging cluster overwrites.
+# The default `values.yaml` file will be used as the source for the values
+# in our staging cluster, and these are the specific configs that we are
+# overwriting for that environment. This is to prevent duplication of
+# most of the config, and only set the necessary ones.
+
+cert:
+  letsencryptProd: true
+  publicCert: true
+  selfSignedCert: false
+
+dashboardUrl: ""
+
+debug: true
+
+hostname: oss-staging.featureform.com
+
+nginx:
+  # The chart installs various global resources. That means that only
+  # one release can have it per cluster. We're disabling it for the staging
+  # environment.
+  enabled: false
+
+psql:
+  createSecret: false
+  db: postgres
+  host: oss-staging.cfqp5tvkxko3.us-east-1.rds.amazonaws.com
+  password: null
+  port: 5432
+  sslmode: require
+  user: postgres
+
+stateProvider: psql
+
+versionOverride: 0.15.2

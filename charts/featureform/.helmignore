@@ -21,3 +21,6 @@
 .idea/
 *.tmproj
 .vscode/
+
+# Used for overrides in our staging environment.
+values-staging.yaml

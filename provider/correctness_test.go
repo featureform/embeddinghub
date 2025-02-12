@@ -38,6 +38,7 @@ func TestTransformations(t *testing.T) {
 	}{
 		{getConfiguredBigQueryTester(t, false)},
 		{getConfiguredSnowflakeTester(t, true)},
+		{getConfiguredPostgresTester(t, false)},
 	}
 
 	testSuite := map[string]func(t *testing.T, storeTester offlineSqlTest){
@@ -67,6 +68,7 @@ func TestMaterializations(t *testing.T) {
 	}{
 		{getConfiguredBigQueryTester(t, false)},
 		{getConfiguredSnowflakeTester(t, true)},
+		{getConfiguredPostgresTester(t, false)},
 	}
 
 	testSuite := map[string]func(t *testing.T, storeTester offlineSqlTest){
@@ -100,6 +102,9 @@ func TestTrainingSets(t *testing.T) {
 		{
 			getConfiguredSnowflakeTester(t, true),
 		},
+		{
+			getConfiguredPostgresTester(t, true),
+		},
 	}
 
 	testSuite := []trainingSetDatasetType{
@@ -121,8 +126,8 @@ func TestTrainingSets(t *testing.T) {
 	}
 }
 
-func newSQLTransformationTest(tester offlineSqlStoreTester, transformationQuery string) *sqlTransformationTester {
-	data := newTestSQLTransformationData(tester, transformationQuery)
+func newSQLTransformationTest(tester offlineSqlStoreTester, transformationQuery string, sanitizeTableNameFn func(object pl.FullyQualifiedObject) string) *sqlTransformationTester {
+	data := newTestSQLTransformationData(tester, transformationQuery, sanitizeTableNameFn)
 	return &sqlTransformationTester{
 		tester: tester,
 		data:   data,
@@ -226,7 +231,7 @@ func (a idCreator) create(t OfflineResourceType, name string) ResourceID {
 	}
 }
 
-func newTestSQLTransformationData(tester offlineSqlStoreTester, transformationQuery string) testSQLTransformationData {
+func newTestSQLTransformationData(tester offlineSqlStoreTester, transformationQuery string, sanitizeTableNameFn func(object pl.FullyQualifiedObject) string) testSQLTransformationData {
 	db := tester.GetTestDatabase()
 	schema := fmt.Sprintf("SCHEMA_%s", strings.ToUpper(uuid.NewString()[:5]))
 	loc := pl.NewFullyQualifiedSQLLocation(db, schema, "TEST_WIND_DATA_TABLE")
@@ -323,7 +328,7 @@ func newTestSQLTransformationData(tester offlineSqlStoreTester, transformationQu
 		config: TransformationConfig{
 			Type:          SQLTransformation,
 			TargetTableID: idCreator.create(Transformation, ""),
-			Query:         fmt.Sprintf(queryFmt, tableLoc.String()),
+			Query:         fmt.Sprintf(queryFmt, sanitizeTableNameFn(tableLoc)),
 			SourceMapping: []SourceMapping{
 				{
 					Template:       SanitizeSqlLocation(tableLoc),
@@ -1096,7 +1101,7 @@ func getTrainingSetDatasetNoTS(tester offlineSqlStoreTester, storeType pt.Type, 
 }
 
 func RegisterTransformationOnPrimaryDatasetTest(t *testing.T, tester offlineSqlTest) {
-	test := newSQLTransformationTest(tester.storeTester, tester.transformationQuery)
+	test := newSQLTransformationTest(tester.storeTester, tester.transformationQuery, tester.sanitizeTableName)
 	_ = initSqlPrimaryDataset(t, test.tester, test.data.location, test.data.schema, test.data.records)
 	if err := test.tester.CreateTransformation(test.data.config); err != nil {
 		t.Fatalf("could not create transformation: %v", err)
@@ -1109,7 +1114,7 @@ func RegisterTransformationOnPrimaryDatasetTest(t *testing.T, tester offlineSqlT
 }
 
 func RegisterChainedTransformationsTest(t *testing.T, tester offlineSqlTest) {
-	test := newSQLTransformationTest(tester.storeTester, tester.transformationQuery)
+	test := newSQLTransformationTest(tester.storeTester, tester.transformationQuery, tester.sanitizeTableName)
 	_ = initSqlPrimaryDataset(t, test.tester, test.data.location, test.data.schema, test.data.records)
 	if err := test.tester.CreateTransformation(test.data.config); err != nil {
 		t.Fatalf("could not create transformation: %v", err)

@@ -231,8 +231,8 @@ func (t *TrainingSetTask) getLabelSourceMapping(ctx context.Context, label *meta
 	}
 	logger.Debugw("Label Provider", "type", labelProvider.Type())
 	switch pt.Type(labelProvider.Type()) {
-	case pt.SnowflakeOffline:
-		logger.Debugw("Getting label source mapping from resource table ...")
+	case pt.SnowflakeOffline, pt.BigQueryOffline, pt.PostgresOffline:
+		logger.Debugw("Getting label source mapping from source ...")
 		return t.getLabelSourceMappingFromSource(label, labelProvider, ctx)
 	default:
 		logger.Debugw("Getting label source mapping from resource table ...")
@@ -332,8 +332,7 @@ func (t *TrainingSetTask) getLabelSourceMappingFromSource(label *metadata.LabelV
 		logger.Errorw("could not get label location", "label", label.Name(), "variant", label.Variant(), "error", err)
 		return provider.SourceMapping{}, err
 	}
-	logger.Debugw("Label entity mappings", "mappings", lblEntityMappings)
-	logger.Debugw("Successfully got label source mapping from source")
+	logger.Debugw("Successfully got label source mapping from source", "entity_mappings", lblEntityMappings, "loc", location)
 	return provider.SourceMapping{
 		ProviderType:   pt.Type(labelProvider.Type()),
 		ProviderConfig: labelProvider.SerializedConfig(),
@@ -423,6 +422,7 @@ func (t *TrainingSetTask) AwaitPendingLabel(ctx context.Context, labelNameVarian
 func (t *TrainingSetTask) getResourceLocation(provider *metadata.Provider, tableName string) (pl.Location, error) {
 	var location pl.Location
 	var err error
+	// TODO: Handle this in a generic way.
 	switch pt.Type(provider.Type()) {
 	case pt.SnowflakeOffline:
 		config := pc.SnowflakeConfig{}
@@ -432,8 +432,20 @@ func (t *TrainingSetTask) getResourceLocation(provider *metadata.Provider, table
 		// TODO: (Erik) determine if we want to use the Catalog location instead of SQL location; technically,
 		// Snowflake references tables in a catalog no differently than it does other table types.
 		location = pl.NewFullyQualifiedSQLLocation(config.Database, config.Schema, tableName)
+	case pt.BigQueryOffline:
+		config := pc.BigQueryConfig{}
+		if err := config.Deserialize(provider.SerializedConfig()); err != nil {
+			return nil, err
+		}
+		location = pl.NewFullyQualifiedSQLLocation(config.ProjectId, config.DatasetId, tableName)
+	case pt.PostgresOffline:
+		config := pc.PostgresConfig{}
+		if err := config.Deserialize(provider.SerializedConfig()); err != nil {
+			return nil, err
+		}
+		location = pl.NewFullyQualifiedSQLLocation(config.Database, config.Schema, tableName)
 	default:
-		t.logger.Errorw("unsupported provider type: %s", provider.Type())
+		t.logger.Errorf("unsupported provider type: %s", provider.Type())
 	}
 	return location, err
 }
@@ -441,9 +453,9 @@ func (t *TrainingSetTask) getResourceLocation(provider *metadata.Provider, table
 func (t *TrainingSetTask) getFeatureSourceTableName(p *metadata.Provider, feature *metadata.FeatureVariant) (string, error) {
 	var resourceType provider.OfflineResourceType
 	switch pt.Type(p.Type()) {
-	case pt.SnowflakeOffline:
-		return t.getSourceTableNameForSnowflake(feature)
-	case pt.MemoryOffline, pt.MySqlOffline, pt.PostgresOffline, pt.ClickHouseOffline, pt.RedshiftOffline, pt.SparkOffline, pt.BigQueryOffline, pt.K8sOffline:
+	case pt.SnowflakeOffline, pt.BigQueryOffline, pt.PostgresOffline:
+		return t.getSourceTableNameForNonMaterializedProviders(feature)
+	case pt.MemoryOffline, pt.MySqlOffline, pt.ClickHouseOffline, pt.RedshiftOffline, pt.SparkOffline, pt.K8sOffline:
 		resourceType = provider.Feature
 	default:
 		t.logger.Errorw("unsupported provider type", "type", p.Type())
@@ -453,13 +465,13 @@ func (t *TrainingSetTask) getFeatureSourceTableName(p *metadata.Provider, featur
 	return ps.ResourceToTableName(resourceType.String(), feature.Name(), feature.Variant())
 }
 
-// getSourceTableNameForSnowflake returns the fully qualified table name for a feature's source variant.
+// getSourceTableNameForNonMaterializedProviders returns the fully qualified table name for a feature's source variant.
 // **NOTE:** In the past, we used the feature materialization as the source of a feature for a training set;
 // however, this was incorrect because that data set will only ever have one row per entity, and in many cases,
 // we need all rows for a given entity to correctly create a training set. Therefore, we now use the source variant
 // as the source of a feature and allow the training set query to determine how to handle the source data based on
 // the presence/absence of timestamps in both the features and label.
-func (t *TrainingSetTask) getSourceTableNameForSnowflake(feature *metadata.FeatureVariant) (string, error) {
+func (t *TrainingSetTask) getSourceTableNameForNonMaterializedProviders(feature *metadata.FeatureVariant) (string, error) {
 	sourceNv := feature.Source()
 	sv, err := t.metadata.GetSourceVariant(context.TODO(), sourceNv)
 	if err != nil {

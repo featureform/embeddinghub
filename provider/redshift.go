@@ -85,9 +85,9 @@ func (q redshiftSQLQueries) viewExists() string {
 	return "SELECT COUNT(*) FROM svv_tables WHERE table_schema='public' AND table_type='VIEW' AND table_name=$1"
 }
 
-func (q redshiftSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error {
+func (q redshiftSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema) error {
 	var query string
-	if timestamp {
+	if schema.TS != "" {
 		query = fmt.Sprintf("CREATE VIEW %s AS SELECT %s as entity, %s as value, %s as ts FROM %s", sanitize(tableName),
 			sanitize(schema.Entity), sanitize(schema.Value), sanitize(schema.TS), sanitize(schema.SourceTable.Location()))
 	} else {
@@ -107,12 +107,12 @@ func (q redshiftSQLQueries) primaryTableRegister(tableName string, sourceName st
 	return query
 }
 
-func (q redshiftSQLQueries) materializationCreate(tableName string, resultName string) []string {
+func (q redshiftSQLQueries) materializationCreate(tableName string, schema ResourceSchema) []string {
 	return []string{
 		fmt.Sprintf(
 			"CREATE TABLE %s AS (SELECT entity, value, ts, row_number() over(ORDER BY (entity)) as row_number FROM ("+
 				"SELECT entity, value, ts, row_number() OVER (PARTITION BY entity ORDER BY entity, ts DESC) as rn "+
-				"FROM %s) WHERE rn=1 ORDER BY entity)", sanitize(tableName), sanitize(resultName)),
+				"FROM %s) WHERE rn=1 ORDER BY entity)", sanitize(tableName), sanitize(schema.SourceTable.Location())),
 	}
 }
 

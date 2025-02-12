@@ -11,11 +11,16 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/featureform/fferr"
+	helper "github.com/featureform/helpers/postgres"
+	"github.com/featureform/logging"
+	pl "github.com/featureform/provider/location"
 	pc "github.com/featureform/provider/provider_config"
 	pt "github.com/featureform/provider/provider_type"
+	tsq "github.com/featureform/provider/tsquery"
 	"github.com/featureform/provider/types"
 	_ "github.com/lib/pq"
 )
@@ -63,6 +68,18 @@ func postgresOfflineStoreFactory(config pc.SerializedConfig) (Provider, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// We override the default getDb method, as when the db or schema
+	// is empty, we use the default one configured.
+	prevGetDb := store.getDb
+	store.getDb = func(database, schema string) (*sql.DB, error) {
+		if database == "" || schema == "" {
+			return prevGetDb(sc.Database, sc.Schema)
+		} else {
+			return prevGetDb(database, schema)
+		}
+	}
+
 	return store, nil
 }
 
@@ -75,37 +92,71 @@ func (q postgresSQLQueries) tableExists() string {
 }
 
 func (q postgresSQLQueries) viewExists() string {
-	return "select count(*) from pg_views where viewname = $1 AND schemaname = CURRENT_SCHEMA()"
+	return "select " +
+		"(select count(*) from pg_matviews where matviewname = $1 AND schemaname = CURRENT_SCHEMA())" +
+		"+ (select count(*) from pg_views where viewname = $1 AND schemaname = CURRENT_SCHEMA())"
 }
 
-func (q postgresSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error {
-	var query string
-	if timestamp {
-		query = fmt.Sprintf("CREATE VIEW %s AS SELECT %s as entity, %s as value, %s as ts FROM %s", sanitize(tableName),
-			sanitize(schema.Entity), sanitize(schema.Value), sanitize(schema.TS), sanitize(schema.SourceTable.Location()))
-	} else {
-		query = fmt.Sprintf("CREATE VIEW %s AS SELECT %s as entity, %s as value, to_timestamp('%s', 'YYYY-DD-MM HH24:MI:SS +0000 UTC')::TIMESTAMPTZ as ts FROM %s", sanitize(tableName),
-			sanitize(schema.Entity), sanitize(schema.Value), time.UnixMilli(0).UTC(), sanitize(schema.SourceTable.Location()))
-	}
-	fmt.Printf("Resource creation query: %s", query)
-	if _, err := db.Exec(query); err != nil {
-		wrapped := fferr.NewExecutionError(pt.PostgresOffline.String(), err)
-		wrapped.AddDetail("table_name", tableName)
-		return wrapped
-	}
-	return nil
+func (q postgresSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema) error {
+	return fferr.NewInternalErrorf("Postgres Offline store does not support registering resources")
 }
 
 func (q postgresSQLQueries) primaryTableRegister(tableName string, sourceName string) string {
 	return fmt.Sprintf("CREATE VIEW %s AS SELECT * FROM %s", sanitize(tableName), sanitize(sourceName))
 }
 
-func (q postgresSQLQueries) materializationCreate(tableName string, sourceName string) []string {
+func (q postgresSQLQueries) materializationCreate(tableName string, schema ResourceSchema) []string {
+	const materializationCreateTemplate = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS {{.tableName}} AS
+WITH OrderedSource AS (
+  SELECT
+    {{.entity}} AS entity,
+    {{.value}} AS value,
+    {{.tsSelectStatement}} AS ts,
+    ROW_NUMBER() OVER (PARTITION BY {{.entity}} {{.tsOrderByStatement}}) AS rn
+  FROM {{.sourceLocation}}
+)
+SELECT
+  entity,
+  value,
+  ts,
+  ROW_NUMBER() OVER (ORDER BY (entity)) AS row_number
+FROM OrderedSource
+WHERE rn = 1
+`
+	tmpl := template.Must(template.New("materializationCreateTemplate").Parse(materializationCreateTemplate))
+
+	var tsSelectStatement, tsOrderByStatement string
+	if schema.TS != "" {
+		tsSelectStatement = fmt.Sprintf("%s", schema.TS)
+		tsOrderByStatement = fmt.Sprintf("ORDER BY %s DESC", schema.TS)
+	} else {
+		tsSelectStatement = fmt.Sprintf("to_timestamp('%s', 'YYYY-DD-MM HH24:MI:SS +0000 UTC')::TIMESTAMPTZ", time.UnixMilli(0).UTC())
+		tsOrderByStatement = ""
+	}
+
+	values := map[string]any{
+		"tableName":          sanitize(tableName),
+		"entity":             schema.Entity,
+		"value":              schema.Value,
+		"tsSelectStatement":  tsSelectStatement,
+		"tsOrderByStatement": tsOrderByStatement,
+		// TODO: Error checking for SQLLocation
+		"sourceLocation": helper.SanitizeLocation(*schema.SourceTable.(*pl.SQLLocation)),
+	}
+
+	var sb strings.Builder
+	err := tmpl.Execute(&sb, values)
+	if err != nil {
+		panic("TODO: Refactor to make error-able")
+	}
+
 	return []string{
-		fmt.Sprintf(
-			"CREATE MATERIALIZED VIEW IF NOT EXISTS %s AS (SELECT entity, value, ts, row_number() over(ORDER BY (SELECT NULL)) as row_number FROM "+
-				"(SELECT entity, ts, value, row_number() OVER (PARTITION BY entity ORDER BY ts desc) "+
-				"AS rn FROM %s) t WHERE rn=1);", sanitize(tableName), sanitize(sourceName)),
+		sb.String(),
+		//fmt.Sprintf(
+		//	"CREATE MATERIALIZED VIEW IF NOT EXISTS %s AS (SELECT entity, value, ts, row_number() over(ORDER BY (SELECT NULL)) as row_number FROM "+
+		//		"(SELECT entity, ts, value, row_number() OVER (PARTITION BY entity ORDER BY ts desc) "+
+		//		"AS rn FROM %s) t WHERE rn=1);", sanitize(tableName), sanitize(sourceName)),
 		fmt.Sprintf("CREATE UNIQUE INDEX ON %s (entity);", sanitize(tableName)),
 	}
 }
@@ -155,51 +206,52 @@ func (q postgresSQLQueries) createValuePlaceholderString(columns []TableColumn) 
 	return strings.Join(placeholders, ", ")
 }
 
-func (q postgresSQLQueries) trainingSetCreate(store *sqlOfflineStore, def TrainingSetDef, tableName string, labelName string) error {
-	return q.trainingSetQuery(store, def, tableName, labelName, false)
+func (q postgresSQLQueries) trainingSetCreate(store *sqlOfflineStore, def TrainingSetDef, tableName string, _ string) error {
+	return q.trainingSetQuery(store, def, tableName, "", false)
 }
 
-func (q postgresSQLQueries) trainingSetUpdate(store *sqlOfflineStore, def TrainingSetDef, tableName string, labelName string) error {
-	return q.trainingSetQuery(store, def, tableName, labelName, true)
+func (q postgresSQLQueries) trainingSetUpdate(store *sqlOfflineStore, def TrainingSetDef, tableName string, _ string) error {
+	return q.trainingSetQuery(store, def, tableName, "", true)
 }
 
-func (q postgresSQLQueries) trainingSetQuery(store *sqlOfflineStore, def TrainingSetDef, tableName string, labelName string, isUpdate bool) error {
-	columns := make([]string, 0)
-	query := fmt.Sprintf(" (SELECT entity, value , ts from %s ) l ", sanitize(labelName))
-	for i, feature := range def.Features {
-		tableName, err := store.getResourceTableName(feature)
-		if err != nil {
-			return err
+func (q postgresSQLQueries) adaptTsDefToBuilderParams(def TrainingSetDef) (tsq.BuilderParams, error) {
+	sanitizeTableNameFn := func(loc pl.Location) (string, error) {
+		lblLoc, isSQLLocation := loc.(*pl.SQLLocation)
+		if !isSQLLocation {
+			return "", fferr.NewInternalErrorf("label location is not an SQL location, actual %T. %v", lblLoc, lblLoc)
 		}
-		santizedName := sanitize(tableName)
-		tableJoinAlias := fmt.Sprintf("t%d", i)
-		columns = append(columns, santizedName)
-		query = fmt.Sprintf("%s LEFT JOIN LATERAL (SELECT entity , value as %s, ts  FROM %s WHERE entity=l.entity and ts <= l.ts ORDER BY ts desc LIMIT 1) %s on %s.entity=l.entity ",
-			query, santizedName, santizedName, tableJoinAlias, tableJoinAlias)
-		if i == len(def.Features)-1 {
-			query = fmt.Sprintf("%s )", query)
-		}
+		return helper.SanitizeLocation(*lblLoc), nil
 	}
-	columnStr := strings.Join(columns, ", ")
 
-	if !isUpdate {
-		fullQuery := fmt.Sprintf("CREATE TABLE %s AS (SELECT %s, l.value as label FROM %s ", sanitize(tableName), columnStr, query)
-		if _, err := store.db.Exec(fullQuery); err != nil {
-			wrapped := fferr.NewResourceExecutionError(pt.PostgresOffline.String(), def.ID.Name, def.ID.Variant, fferr.ResourceType(def.ID.Type.String()), err)
-			wrapped.AddDetail("table_name", tableName)
-			wrapped.AddDetail("label_name", labelName)
-			return wrapped
-		}
-	} else {
-		tempName := sanitize(fmt.Sprintf("tmp_%s", tableName))
-		fullQuery := fmt.Sprintf("CREATE TABLE %s AS (SELECT %s, l.value as label FROM %s ", tempName, columnStr, query)
-		err := q.atomicUpdate(store.db, tableName, tempName, fullQuery)
-		if err != nil {
-			wrapped := fferr.NewResourceExecutionError(pt.PostgresOffline.String(), def.ID.Name, def.ID.Variant, fferr.ResourceType(def.ID.Type.String()), err)
-			wrapped.AddDetail("table_name", tableName)
-			wrapped.AddDetail("label_name", labelName)
-			return wrapped
-		}
+	// TODO: Create and pass in actual logger
+	logger := logging.NewLogger("postgres-temp")
+	return def.ToBuilderParams(logger, sanitizeTableNameFn)
+}
+
+func (q postgresSQLQueries) trainingSetQuery(store *sqlOfflineStore, def TrainingSetDef, tableName string, _ string, isUpdate bool) error {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS ", sanitize(tableName)))
+
+	params, err := q.adaptTsDefToBuilderParams(def)
+	if err != nil {
+		return err
+	}
+
+	queryConfig := tsq.QueryConfig{
+		UseAsOfJoin: false,
+		QuoteChar:   "\"",
+		QuoteTable:  false,
+	}
+	ts := tsq.NewTrainingSet(queryConfig, params)
+	sql, err := ts.CompileSQL()
+	if err != nil {
+		return err
+	}
+	sb.WriteString(sql)
+	if _, err := store.db.Exec(sb.String()); err != nil {
+		wrapped := fferr.NewResourceExecutionError(pt.PostgresOffline.String(), def.ID.Name, def.ID.Variant, fferr.ResourceType(def.ID.Type.String()), err)
+		wrapped.AddDetail("table_name", tableName)
+		return wrapped
 	}
 	return nil
 }

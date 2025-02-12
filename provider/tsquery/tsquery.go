@@ -254,9 +254,11 @@ feature_%d_filtered AS (
 		j.entity,
 	))
 
+	joins := make([]string, len(j.ft.Values))
 	for i := range j.ft.Values {
-		sb.WriteString(fmt.Sprintf("    %s,\n", j.ft.Values[i]))
+		joins[i] = "    " + j.ft.Values[i]
 	}
+	sb.WriteString(strings.Join(joins, ",\n"))
 
 	sb.WriteString(fmt.Sprintf(`
   FROM feature_%d

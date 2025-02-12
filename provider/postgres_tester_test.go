@@ -41,9 +41,21 @@ func (p *postgresOfflineStoreTester) CreateDatabase(name string) error {
 	if err != nil {
 		return err
 	}
-	query := fmt.Sprintf("CREATE DATABASE %s", pq.QuoteIdentifier(name))
+
+	// Postgres doesn't have a CREATE DATABASE IF EXISTS clause, so we just drop and recreate it.
+	query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pq.QuoteIdentifier(name))
 	_, err = db.Exec(query)
-	return err
+	if err != nil {
+		return err
+	}
+
+	query = fmt.Sprintf("CREATE DATABASE %s", pq.QuoteIdentifier(name))
+	_, err = db.Exec(query)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *postgresOfflineStoreTester) DropDatabase(name string) error {
@@ -225,6 +237,8 @@ func getPostgresConfig(t *testing.T, dbName string) (pc.PostgresConfig, error) {
 		t.Fatalf("missing POSTGRES_PASSWORD variable")
 	}
 
+	schema := uuid.NewString()[:10]
+
 	postgresConfig := pc.PostgresConfig{
 		Host:     "localhost",
 		Port:     "5432",
@@ -232,6 +246,7 @@ func getPostgresConfig(t *testing.T, dbName string) (pc.PostgresConfig, error) {
 		Username: user,
 		Password: retriever.NewStaticValue[string](password),
 		SSLMode:  "disable",
+		Schema:   schema,
 	}
 
 	return postgresConfig, nil

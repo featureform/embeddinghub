@@ -77,10 +77,10 @@ func (q mySQLQueries) viewExists() string {
 	return "SELECT COUNT(*) FROM information_schema.views WHERE table_name = ? AND table_schema = CURRENT_SCHEMA()"
 }
 
-func (q mySQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error {
+func (q mySQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema) error {
 	var query *sql.Stmt
 	var err error
-	if !timestamp {
+	if schema.TS == "" {
 		schema.TS = time.Now().UTC().Format("2006-01-02 15:04:05")
 	}
 	query, err = db.Prepare("CREATE VIEW ? AS SELECT ? as entity, ? as value, ? as ts FROM ?")
@@ -103,8 +103,8 @@ func (q mySQLQueries) primaryTableRegister(tableName string, sourceName string) 
 
 // materializationCreate satisfies the OfflineTableQueries interface.
 // mySQL doesn't have materialized views.
-func (q mySQLQueries) materializationCreate(tableName string, sourceName string) []string {
-	return []string{q.primaryTableRegister(tableName, sourceName)}
+func (q mySQLQueries) materializationCreate(tableName string, schema ResourceSchema) []string {
+	return []string{q.primaryTableRegister(tableName, schema.SourceTable.Location())}
 }
 
 func (q mySQLQueries) materializationUpdate(db *sql.DB, tableName string, sourceName string) error {

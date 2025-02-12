@@ -595,14 +595,8 @@ func (store *clickHouseOfflineStore) RegisterResourceFromSourceTable(id Resource
 	if err != nil {
 		return nil, err
 	}
-	if schema.TS == "" {
-		if err := store.query.registerResources(store.db, tableName, schema, false); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := store.query.registerResources(store.db, tableName, schema, true); err != nil {
-			return nil, err
-		}
+
+	if err := store.query.registerResources(store.db, tableName, schema); err != nil {
 	}
 
 	return &clickhouseOfflineTable{
@@ -900,7 +894,7 @@ func (store *clickHouseOfflineStore) CreateMaterialization(id ResourceID, opts M
 	if err != nil {
 		return nil, err
 	}
-	materializeQueries := store.query.materializationCreate(matTableName, resTable.name)
+	materializeQueries := store.query.materializationCreate(matTableName, opts.Schema)
 	for _, materializeQry := range materializeQueries {
 		_, err = store.db.Exec(materializeQry)
 		if err != nil {
@@ -1239,9 +1233,9 @@ func (q clickhouseSQLQueries) trainingRowSplitSelect(columns string, trainingSet
 	return trainSplitQuery, testSplitQuery
 }
 
-func (q clickhouseSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error {
+func (q clickhouseSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema) error {
 	var query string
-	if timestamp {
+	if schema.TS != "" {
 		query = fmt.Sprintf("CREATE VIEW %s AS SELECT %s as entity, %s as value, %s as ts FROM %s", SanitizeClickHouseIdentifier(tableName),
 			SanitizeClickHouseIdentifier(schema.Entity), SanitizeClickHouseIdentifier(schema.Value), SanitizeClickHouseIdentifier(schema.TS), SanitizeClickHouseIdentifier(schema.SourceTable.Location()))
 	} else {
@@ -1261,10 +1255,10 @@ func (q clickhouseSQLQueries) primaryTableRegister(tableName string, sourceName 
 	return fmt.Sprintf("CREATE VIEW %s AS SELECT * FROM %s", SanitizeClickHouseIdentifier(tableName), sourceName)
 }
 
-func (q clickhouseSQLQueries) materializationCreate(tableName string, sourceName string) []string {
-	return []string{fmt.Sprintf("CREATE TABLE %s ENGINE = MergeTree ORDER BY (entity, ts) SETTINGS allow_nullable_key=1 EMPTY AS SELECT * FROM %s", SanitizeClickHouseIdentifier(tableName), SanitizeClickHouseIdentifier(sourceName)),
+func (q clickhouseSQLQueries) materializationCreate(tableName string, schema ResourceSchema) []string {
+	return []string{fmt.Sprintf("CREATE TABLE %s ENGINE = MergeTree ORDER BY (entity, ts) SETTINGS allow_nullable_key=1 EMPTY AS SELECT * FROM %s", SanitizeClickHouseIdentifier(tableName), SanitizeClickHouseIdentifier(schema.SourceTable.Location())),
 		fmt.Sprintf("ALTER TABLE %s ADD COLUMN row_number UInt64;", SanitizeClickHouseIdentifier(tableName)),
-		fmt.Sprintf("INSERT INTO %s SELECT entity, value, tis AS ts, row_number() OVER () AS row_number FROM (SELECT entity, max(ts) AS tis, argMax(value, ts) AS value FROM %s GROUP BY entity ORDER BY entity ASC, value ASC);", SanitizeClickHouseIdentifier(tableName), SanitizeClickHouseIdentifier(sourceName)),
+		fmt.Sprintf("INSERT INTO %s SELECT entity, value, tis AS ts, row_number() OVER () AS row_number FROM (SELECT entity, max(ts) AS tis, argMax(value, ts) AS value FROM %s GROUP BY entity ORDER BY entity ASC, value ASC);", SanitizeClickHouseIdentifier(tableName), SanitizeClickHouseIdentifier(schema.SourceTable.Location())),
 	}
 }
 

@@ -258,8 +258,8 @@ func (store *bqOfflineStore) newBigQueryPrimaryTable(name string) (*bqPrimaryTab
 	}, nil
 }
 
-func (q defaultBQQueries) registerResources(client *bigquery.Client, tableName string, schema ResourceSchema, timestamp bool) error {
-	logger := q.logger.With("table", tableName, "schema", schema, "timestamp", timestamp)
+func (q defaultBQQueries) registerResources(client *bigquery.Client, tableName string, schema ResourceSchema) error {
+	logger := q.logger.With("table", tableName, "schema", schema)
 
 	var sourceLocation, isSqlLocation = schema.SourceTable.(*pl.SQLLocation)
 	if !isSqlLocation {
@@ -275,7 +275,7 @@ func (q defaultBQQueries) registerResources(client *bigquery.Client, tableName s
 	}
 	sb.WriteString(fmt.Sprintf("`%s` AS value, ", schema.EntityMappings.ValueColumn))
 
-	if timestamp {
+	if schema.TS != "" {
 		sb.WriteString(fmt.Sprintf("`%s` as ts ",
 			schema.TS,
 		))
@@ -945,8 +945,7 @@ func (store *bqOfflineStore) RegisterResourceFromSourceTable(id ResourceID, sche
 		return nil, err
 	}
 
-	useTimestamp := schema.TS != ""
-	if err := store.query.registerResources(store.client, tableName, schema, useTimestamp); err != nil {
+	if err := store.query.registerResources(store.client, tableName, schema); err != nil {
 		logger.Error("Error registering resources", "error", err)
 		return nil, err
 	}

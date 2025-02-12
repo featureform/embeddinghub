@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	sf "github.com/snowflakedb/gosnowflake"
@@ -50,13 +51,13 @@ type OfflineTableQueries interface {
 	tableExists() string
 	viewExists() string
 	resourceExists(tableName string) string
-	registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error
+	registerResources(db *sql.DB, tableName string, schema ResourceSchema) error
 	primaryTableRegister(tableName string, sourceName string) string
 	primaryTableCreate(name string, columnString string) string
 	getColumns(db *sql.DB, tableName string) ([]TableColumn, error)
 	getValueColumnTypes(tableName string) string
 	determineColumnType(valueType types.ValueType) (string, error)
-	materializationCreate(tableName string, sourceName string) []string
+	materializationCreate(tableName string, schema ResourceSchema) []string
 	materializationUpdate(db *sql.DB, tableName string, sourceName string) error
 	materializationExists() string
 	materializationDrop(tableName string) string
@@ -268,42 +269,43 @@ func (store sqlOfflineStore) Delete(location pl.Location) error {
 }
 
 func (store *sqlOfflineStore) RegisterResourceFromSourceTable(id ResourceID, schema ResourceSchema, opts ...ResourceOption) (OfflineTable, error) {
-	logger := logging.NewLogger("sql").WithProvider(store.Type().String(), "SQL")
-	logger.Debugw("Registering resource from source table", "id", id, "schema", schema, "options", opts)
+	logger := logging.NewLogger("sql").WithProvider(store.Type().String(), "SQL").With("id", id, "schema", schema, "opts", opts)
+	logger.Debugw("Registering resource from source table")
 	if len(opts) > 0 {
-		logger.Errorw("resource options not supported", "options", opts)
+		logger.Errorw("resource options not supported")
 		return nil, fferr.NewInvalidArgumentError(fmt.Errorf("resource options not supported"))
 	}
 	if err := id.check(Feature, Label); err != nil {
-		logger.Errorw("id check failed", "id", id, "error", err)
+		logger.Errorw("id check failed", "error", err)
 		return nil, err
 	}
+
+	// Special casing Postgres, which doesn't actually register
+	// intermediate resource tables.
+	if _, ok := store.query.(*postgresSQLQueries); ok {
+		logger.Debug("Skipping registering resource due to Postgres")
+		return nil, nil
+	}
+
 	if exists, err := store.tableExistsForResourceId(id); err != nil {
-		logger.Errorw("table exists check failed", "id", id, "error", err)
+		logger.Errorw("table exists check failed", "error", err)
 		return nil, err
 	} else if exists {
-		logger.Errorw("table already exists", "id", id)
+		logger.Errorw("table already exists")
 		return nil, fferr.NewDatasetAlreadyExistsError(id.Name, id.Variant, nil)
 	}
-	if schema.Entity == "" || schema.Value == "" {
-		logger.Errorw("non-empty entity and value columns required", "schema", schema)
-		return nil, fferr.NewInvalidArgumentError(fmt.Errorf("non-empty entity and value columns required"))
+	if err := schema.Validate(); err != nil {
+		logger.Errorw("schema validation failed")
 	}
 	tableName, err := store.getResourceTableName(id)
 	if err != nil {
-		logger.Errorw("table name generation failed", "id", id, "error", err)
+		logger.Errorw("table name generation failed", "error", err)
 		return nil, err
 	}
-	if schema.TS == "" {
-		if err := store.query.registerResources(store.db, tableName, schema, false); err != nil {
-			logger.Errorw("Register resources without timestamp failed", "table", tableName, "schema", schema, "error", err)
-			return nil, err
-		}
-	} else {
-		if err := store.query.registerResources(store.db, tableName, schema, true); err != nil {
-			logger.Errorw("Register resources with timestamp failed", "table", tableName, "schema", schema, "error", err)
-			return nil, err
-		}
+
+	if err := store.query.registerResources(store.db, tableName, schema); err != nil {
+		logger.Errorw("Register resources failed", "table", tableName, "schema", schema, "error", err)
+		return nil, err
 	}
 
 	return &sqlOfflineTable{
@@ -876,11 +878,6 @@ func (store *sqlOfflineStore) CreateMaterialization(id ResourceID, opts Material
 	if id.Type != Feature {
 		return nil, fferr.NewInvalidArgumentError(fmt.Errorf("received %s; only features can be materialized", id.Type))
 	}
-	resTable, err := store.getsqlResourceTable(id)
-	if err != nil {
-		return nil, err
-	}
-
 	matID, err := NewMaterializationID(id)
 	if err != nil {
 		return nil, err
@@ -889,7 +886,7 @@ func (store *sqlOfflineStore) CreateMaterialization(id ResourceID, opts Material
 	if err != nil {
 		return nil, err
 	}
-	materializeQueries := store.query.materializationCreate(matTableName, resTable.name)
+	materializeQueries := store.query.materializationCreate(matTableName, opts.Schema)
 	for _, materializeQry := range materializeQueries {
 		_, err = store.db.Exec(materializeQry)
 		if err != nil {
@@ -1033,11 +1030,19 @@ func (store *sqlOfflineStore) CreateTrainingSet(def TrainingSetDef) error {
 	if err := def.check(); err != nil {
 		return err
 	}
-	label, err := store.getsqlResourceTable(def.Label)
+
+	tableName, err := store.getTrainingSetName(def.ID)
 	if err != nil {
 		return err
 	}
-	tableName, err := store.getTrainingSetName(def.ID)
+
+	// Special casing Postgres, which is the only SQL provider that currently
+	// doesn't use resource tables.
+	if postgresQueries, ok := store.query.(*postgresSQLQueries); ok {
+		return postgresQueries.trainingSetCreate(store, def, tableName, "")
+	}
+
+	label, err := store.getsqlResourceTable(def.Label)
 	if err != nil {
 		return err
 	}
@@ -1631,15 +1636,41 @@ func (q defaultOfflineSQLQueries) viewExists() string {
 	return genericExists
 }
 
-func (q defaultOfflineSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema, timestamp bool) error {
-	var query string
-	if timestamp {
-		query = fmt.Sprintf("CREATE VIEW %s AS SELECT IDENTIFIER('%s') as entity,  IDENTIFIER('%s') as value,  IDENTIFIER('%s') as ts FROM TABLE('%s')", sanitize(tableName),
-			schema.Entity, schema.Value, schema.TS, sanitize(schema.SourceTable.Location()))
+func (q defaultOfflineSQLQueries) registerResources(db *sql.DB, tableName string, schema ResourceSchema) error {
+	const registerResourcesTemplate = `
+CREATE VIEW {{.tableName}} AS
+SELECT 
+  {{range .entities}}IDENTIFIER('{{.EntityColumn}}') AS entity_{{.Name}}, {{end}}
+  IDENTIFIER('{{.value}}') AS value,
+  {{.timestampQuery}} AS ts
+FROM TABLE('{{.sourceLocation}})'
+`
+	tmpl := template.Must(template.New("registerResourceTemplate").Parse(registerResourcesTemplate))
+
+	var ts string
+	if schema.TS != "" {
+		ts = fmt.Sprintf("IDENTIFIER('%s')", schema.EntityMappings.TimestampColumn)
 	} else {
-		query = fmt.Sprintf("CREATE VIEW %s AS SELECT IDENTIFIER('%s') as entity, IDENTIFIER('%s') as value, to_timestamp_ntz('%s', 'YYYY-DD-MM HH24:MI:SS +0000 UTC')::TIMESTAMP_NTZ as ts FROM TABLE('%s')", sanitize(tableName),
-			schema.Entity, schema.Value, time.UnixMilli(0).UTC(), sanitize(schema.SourceTable.Location()))
+		ts = fmt.Sprintf("to_timestamp_ntz('%s', 'YYYY-DD-MM HH24:MI:SS +0000 UTC')::TIMESTAMP_NTZ", time.UnixMilli(0).UTC())
 	}
+
+	data := map[string]any{
+		"tableName":      sanitize(tableName),
+		"entities":       schema.EntityMappings.Mappings,
+		"value":          schema.EntityMappings.ValueColumn,
+		"timestampQuery": ts,
+		"sourceLocation": sanitize(schema.SourceTable.Location()),
+	}
+
+	var sb strings.Builder
+	err := tmpl.Execute(&sb, data)
+	if err != nil {
+		wrapped := fferr.NewExecutionError("SQL", err)
+		wrapped.AddDetail("table_name", tableName)
+		return wrapped
+	}
+	query := sb.String()
+
 	if _, err := db.Exec(query); err != nil {
 		wrapped := fferr.NewExecutionError("SQL", err)
 		wrapped.AddDetail("table_name", tableName)
@@ -1680,12 +1711,32 @@ func (q defaultOfflineSQLQueries) primaryTableCreate(name string, columnString s
 	return fmt.Sprintf("CREATE TABLE %s ( %s )", sanitize(name), columnString)
 }
 
-func (q defaultOfflineSQLQueries) materializationCreate(tableName string, sourceName string) []string {
+func (q defaultOfflineSQLQueries) materializationCreate(tableName string, schema ResourceSchema) []string {
+	// TODO: Check that this is tested
+	const materializationCreateTemplate = `
+CREATE TABLE IF NOT EXISTS {{.tableName}} AS
+WITH OrderedSource AS (
+  SELECT
+    IDENTIFIER('{{.entity}}') AS entity,
+    IDENTIFIER('{{.value}}') AS value,
+    {{.tsSelectStatement}},
+    ROW_NUMBER() OVER (PARTITION BY IDENTIFIER('{{.entity}}') {{.tsOrderByStatement}}) AS rn
+  FROM {{.sourceLocation}}
+)
+SELECT
+  entity,
+  value,
+  ts,
+  ROW_NUMBER() OVER (ORDER BY (entity)) AS row_number
+FROM OrderedSource
+WHERE rn = 1
+`
 	return []string{
+		// TODO: Below not correct, just changed to compile
 		fmt.Sprintf(
 			"CREATE TABLE IF NOT EXISTS %s AS (SELECT entity, value, ts, row_number() over(ORDER BY (SELECT NULL)) as row_number FROM "+
 				"(SELECT entity, ts, value, row_number() OVER (PARTITION BY entity ORDER BY ts desc) "+
-				"AS rn FROM %s) t WHERE rn=1)", sanitize(tableName), sanitize(sourceName)),
+				"AS rn FROM %s) t WHERE rn=1)", sanitize(tableName), sanitize(schema.SourceTable.Location())),
 	}
 }
 
